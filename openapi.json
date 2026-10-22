@@ -1,0 +1,1540 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "OpenAsy Certificates API",
+    "version": "0.1.0",
+    "summary": "Every TLS certificate you have, when it expires and what is wrong with it.",
+    "description": "Every screen of certificates uses this API, and so can your scripts and cron jobs (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nSend certificates as PEM text with `CERTIFICATES_INGEST_TOKEN`. Private keys are never accepted. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "This certificates"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Certificates",
+      "description": "The inventory: what was seen, where, and when it expires."
+    },
+    {
+      "name": "Endpoints",
+      "description": "Addresses the server connects to itself."
+    },
+    {
+      "name": "Product",
+      "description": "Version and overview of this certificates."
+    }
+  ],
+  "paths": {
+    "/api/v1/certificates": {
+      "post": {
+        "operationId": "sendCertificates",
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "Send certificates",
+        "security": [
+          {
+            "ingestToken": []
+          },
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Takes PEM text: one certificate or a chain, from CI, a cron job or a collector. **A body that holds a private key of any kind is refused whole** (`private-key`), before it is read and without repeating any of it; only public certificates are kept.\n\n```bash\ncat /etc/ssl/certs/shop.pem | curl -sf -X POST -H \"Authorization: Bearer $CERTIFICATES_INGEST_TOKEN\" \\\n  --data-binary @- \"https://certificates.example.com/api/v1/certificates?source=web-1:/etc/ssl/certs/shop.pem\"\n```\n\nJSON `{ \"pem\": \"...\", \"source\": \"...\" }` works too. The body may be gzipped (`Content-Encoding: gzip`), up to 1 MiB, with at most 100 certificates.\n\nTakes CERTIFICATES_INGEST_TOKEN, or an API token with the editor role.",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Where the certificates were seen, such as `web-1:443`. Defaults to `upload`.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCertificates"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Read and kept. Known certificates only get the new place and time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Received"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      },
+      "get": {
+        "operationId": "listCertificates",
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "List certificates",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "description": "Only certificates in this state.",
+            "schema": {
+              "$ref": "#/components/schemas/State"
+            }
+          },
+          {
+            "name": "warning",
+            "in": "query",
+            "required": false,
+            "description": "Only certificates with this warning.",
+            "schema": {
+              "$ref": "#/components/schemas/Warning"
+            }
+          },
+          {
+            "name": "ca",
+            "in": "query",
+            "required": false,
+            "description": "`true`: only CAs. `false`: only leaves.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Matches names, issuer, fingerprint or where it was seen.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Order.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "expiry",
+                "name"
+              ],
+              "default": "expiry"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page's nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Soonest to expire first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/certificates/{id}": {
+      "get": {
+        "operationId": "getCertificate",
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "Get a certificate",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The certificate's sha256.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The certificate, its PEM and the chain above it in the inventory.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "delete": {
+        "operationId": "deleteCertificate",
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "Delete a certificate",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the admin role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The certificate's sha256.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted, with where it was seen. It comes back if it is sent or probed again."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/expiring": {
+      "get": {
+        "operationId": "listExpiring",
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "Certificates that crossed a threshold",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Each certificate is reported once for the tightest threshold it has crossed (30, 14, 7 and 1 days by default, and 0 for expired), not again for the wider ones. For an alert that runs on a schedule, ask with `since` set to the time of the last run.\n\nNeeds the viewer role.",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Only crossings at or after this time. Defaults to 24 hours ago.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tightest crossings first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpiringList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/endpoints": {
+      "get": {
+        "operationId": "listEndpoints",
+        "tags": [
+          "Endpoints"
+        ],
+        "summary": "List endpoints",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "By host.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "post": {
+        "operationId": "createEndpoint",
+        "tags": [
+          "Endpoints"
+        ],
+        "summary": "Add an endpoint",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "An address the server connects to with a TLS handshake to read its certificates. Only public addresses: a name that resolves to a private, loopback or link-local address is refused, here and at every probe. Certificates on private networks are reported by a collector in that network.\n\nNeeds the admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewEndpoint"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added. It is probed on the next round, or with the probe operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Endpoint"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/endpoints/{id}": {
+      "delete": {
+        "operationId": "deleteEndpoint",
+        "tags": [
+          "Endpoints"
+        ],
+        "summary": "Delete an endpoint",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the admin role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted. The certificates it found stay in the inventory."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/endpoints/{id}/probe": {
+      "post": {
+        "operationId": "probeEndpoint",
+        "tags": [
+          "Endpoints"
+        ],
+        "summary": "Probe an endpoint now",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the editor role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The endpoint with the result. A failed probe is an answer, not an error: see `lastError`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Endpoint"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/summary": {
+      "get": {
+        "operationId": "getSummary",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Overview",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "Counts for the whole inventory.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "operationId": "getVersion",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Version",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The running version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "operationId": "listProducts",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Other products of this install",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "From OPENASY_PRODUCTS, for the product switcher.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "liveness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readiness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Readiness",
+        "description": "Ready while the database answers.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready to serve.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Prometheus metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Metrics in the Prometheus text format.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-openasy-session",
+        "description": "The browser session after signing in (`openasy-session` when certificates runs on plain http://localhost). Requests that change something must come from the certificates origin."
+      },
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API token created under Settings \u2192 API tokens (`oa_certificates_...`): one role, always an expiry (ADR 0003)."
+      },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Only when certificates is started by its tests or a local script: one shared token with the admin role. A production install does not have it."
+      },
+      "ingestToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`CERTIFICATES_INGEST_TOKEN`: for cron jobs and CI. It can send certificates, nothing else."
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "An error, as RFC 9457 Problem Details.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid-token",
+              "invalid-json",
+              "invalid-body",
+              "invalid-pem",
+              "private-key",
+              "conflict",
+              "not-found",
+              "not-configured",
+              "payload-too-large",
+              "internal-error",
+              "unauthenticated",
+              "invalid-credentials",
+              "mfa-required",
+              "mfa-setup-required",
+              "forbidden",
+              "cross-site",
+              "rate-limited"
+            ],
+            "description": "Stable; match on this."
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "State": {
+        "type": "string",
+        "enum": [
+          "valid",
+          "expiring",
+          "critical",
+          "expired",
+          "not-yet-valid"
+        ],
+        "description": "`expiring` inside the largest warning threshold (30 days by default), `critical` inside the last 7 days."
+      },
+      "Warning": {
+        "type": "string",
+        "enum": [
+          "weak-key",
+          "weak-signature",
+          "wildcard",
+          "self-signed",
+          "long-lifetime"
+        ],
+        "description": "`weak-key`: RSA under 2048 bits. `weak-signature`: SHA-1 or MD5. `wildcard`: a name starting with `*.`. `self-signed`: a leaf that signed itself. `long-lifetime`: a leaf valid for more than 398 days."
+      },
+      "Version": {
+        "type": "object",
+        "required": [
+          "product",
+          "version"
+        ],
+        "properties": {
+          "product": {
+            "const": "certificates"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductLink": {
+        "type": "object",
+        "required": [
+          "id",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The product, as OpenAsy names it.",
+            "examples": [
+              "infrastructure"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The address people open it at.",
+            "examples": [
+              "https://infra.example.com"
+            ]
+          }
+        }
+      },
+      "ProductList": {
+        "type": "object",
+        "required": [
+          "products"
+        ],
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductLink"
+            }
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Source": {
+        "type": "object",
+        "required": [
+          "source",
+          "position",
+          "lastSeen"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Where it was seen, such as `web-1:443` or a file path."
+          },
+          "position": {
+            "type": "integer",
+            "description": "Place in the chain that was sent; 0 is the leaf."
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Certificate": {
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "commonName",
+          "names",
+          "issuer",
+          "issuerCommonName",
+          "serial",
+          "notBefore",
+          "notAfter",
+          "daysLeft",
+          "state",
+          "keyType",
+          "keyBits",
+          "signature",
+          "ca",
+          "selfSigned",
+          "warnings",
+          "sources",
+          "firstSeen",
+          "lastSeen"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The sha256 of the certificate."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "commonName": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subject alternative names: `DNS:...`, `IP:...`, `email:...`, `URI:...`."
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "issuerCommonName": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "serial": {
+            "type": "string"
+          },
+          "notBefore": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notAfter": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "daysLeft": {
+            "type": "integer",
+            "description": "Whole days until notAfter; negative once expired."
+          },
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "keyType": {
+            "type": "string"
+          },
+          "keyBits": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "signature": {
+            "type": "string"
+          },
+          "ca": {
+            "type": "boolean"
+          },
+          "selfSigned": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
+          },
+          "firstSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CertificateList": {
+        "type": "object",
+        "required": [
+          "certificates"
+        ],
+        "properties": {
+          "certificates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Certificate"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass the previous page's nextCursor to get the next page."
+          }
+        }
+      },
+      "CertificateDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Certificate"
+          },
+          {
+            "type": "object",
+            "required": [
+              "pem",
+              "chain"
+            ],
+            "properties": {
+              "pem": {
+                "type": "string",
+                "description": "The certificate. Never a key."
+              },
+              "chain": {
+                "type": "array",
+                "description": "The certificates in the inventory that signed this one, nearest first.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "commonName",
+                    "subject",
+                    "notAfter",
+                    "state",
+                    "ca",
+                    "selfSigned"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "commonName": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subject": {
+                      "type": "string"
+                    },
+                    "notAfter": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "state": {
+                      "$ref": "#/components/schemas/State"
+                    },
+                    "ca": {
+                      "type": "boolean"
+                    },
+                    "selfSigned": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Received": {
+        "type": "object",
+        "required": [
+          "certificates",
+          "added"
+        ],
+        "properties": {
+          "certificates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Certificate"
+            }
+          },
+          "added": {
+            "type": "integer",
+            "description": "How many of them were not known before."
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewCertificates": {
+        "type": "object",
+        "required": [
+          "pem"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "pem": {
+            "type": "string",
+            "description": "One certificate or a chain, as PEM text."
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "Crossing": {
+        "type": "object",
+        "required": [
+          "threshold",
+          "crossedAt",
+          "certificate"
+        ],
+        "properties": {
+          "threshold": {
+            "type": "integer",
+            "description": "Days left that were crossed; 0 means it expired."
+          },
+          "crossedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "certificate": {
+            "$ref": "#/components/schemas/Certificate"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExpiringList": {
+        "type": "object",
+        "required": [
+          "crossings",
+          "thresholds"
+        ],
+        "properties": {
+          "crossings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Crossing"
+            }
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "The thresholds in use, largest first."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Endpoint": {
+        "type": "object",
+        "required": [
+          "id",
+          "host",
+          "port",
+          "lastProbeAt",
+          "lastError",
+          "chainValid",
+          "chainError",
+          "certificate",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "lastProbeAt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "format": "date-time"
+              }
+            ]
+          },
+          "lastError": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "chainValid": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              }
+            ],
+            "description": "Whether the system's roots trust the chain and it fits the name; read apart from the chain."
+          },
+          "chainError": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "certificate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "commonName",
+                  "notAfter",
+                  "daysLeft",
+                  "state"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "commonName": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "notAfter": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "daysLeft": {
+                    "type": "integer"
+                  },
+                  "state": {
+                    "$ref": "#/components/schemas/State"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ],
+            "description": "The leaf it presented last."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EndpointList": {
+        "type": "object",
+        "required": [
+          "endpoints"
+        ],
+        "properties": {
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Endpoint"
+            }
+          }
+        }
+      },
+      "NewEndpoint": {
+        "type": "object",
+        "required": [
+          "host"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "A name or an address on the public internet."
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "default": 443
+          }
+        }
+      },
+      "Summary": {
+        "type": "object",
+        "required": [
+          "certificates",
+          "states",
+          "withWarnings",
+          "endpoints",
+          "failingEndpoints",
+          "warnDays",
+          "nextExpiry"
+        ],
+        "properties": {
+          "certificates": {
+            "type": "integer"
+          },
+          "states": {
+            "type": "object",
+            "required": [
+              "valid",
+              "expiring",
+              "critical",
+              "expired",
+              "not-yet-valid"
+            ],
+            "properties": {
+              "valid": {
+                "type": "integer"
+              },
+              "expiring": {
+                "type": "integer"
+              },
+              "critical": {
+                "type": "integer"
+              },
+              "expired": {
+                "type": "integer"
+              },
+              "not-yet-valid": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          },
+          "withWarnings": {
+            "type": "integer"
+          },
+          "endpoints": {
+            "type": "integer"
+          },
+          "failingEndpoints": {
+            "type": "integer"
+          },
+          "warnDays": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "nextExpiry": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "commonName",
+                  "notAfter",
+                  "daysLeft"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "commonName": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "notAfter": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "daysLeft": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}
