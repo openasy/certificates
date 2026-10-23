@@ -24,22 +24,13 @@ import {
   type Column,
   type ProductId,
   useThemePreference,
+  useAgo,
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth } from "@openasy/auth/react";
 import { BadgeCheck, KeyRound, LogIn, LogOut, Plus, Radar, RefreshCw, Settings2, Trash2, UserRound, Users } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, MfaSetupRequired, Unauthorized, type Certificate, type CertificateDetail, type Endpoint, type ProductLink, type State, type Summary, type Warning } from "./api.ts";
-
-function ago(iso: string | null | undefined): string {
-  if (!iso) return "never";
-  const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86_400)} d ago`;
-}
-
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+import { useT, type T } from "./i18n.ts";
 
 const PAGES = ["endpoints", "setup", "account", "members", "signin", "tokens"] as const;
 type Route = { page: "certificates" | (typeof PAGES)[number] } | { page: "certificate"; id: string };
@@ -70,30 +61,32 @@ function useApi() {
 }
 type Call = ReturnType<typeof useApi>;
 
-const STATES: Array<{ value: State; label: string }> = [
-  { value: "expired", label: "Expired" },
-  { value: "critical", label: "Critical, under 7 days" },
-  { value: "expiring", label: "Expiring" },
-  { value: "not-yet-valid", label: "Not yet valid" },
-  { value: "valid", label: "Valid" },
-];
-const WARNINGS: Array<{ value: Warning; label: string; hint: string }> = [
-  { value: "weak-key", label: "Weak key", hint: "RSA under 2048 bits" },
-  { value: "weak-signature", label: "Weak signature", hint: "SHA-1 or MD5" },
-  { value: "wildcard", label: "Wildcard", hint: "One key for every subdomain" },
-  { value: "self-signed", label: "Self-signed", hint: "A leaf that signed itself" },
-  { value: "long-lifetime", label: "Long lifetime", hint: "A leaf valid for over 398 days" },
-];
+const STATES = (t: T): Array<{ value: State; label: string }> => ([
+  { value: "expired", label: t("states.expired") },
+  { value: "critical", label: t("states.criticalUnder7Days") },
+  { value: "expiring", label: t("states.expiring") },
+  { value: "not-yet-valid", label: t("states.notYetValid") },
+  { value: "valid", label: t("states.valid") },
+]);
+const WARNINGS = (t: T): Array<{ value: Warning; label: string; hint: string }> => ([
+  { value: "weak-key", label: t("warnings.weakKey"), hint: t("warnings.rsaUnder2048Bits") },
+  { value: "weak-signature", label: t("warnings.weakSignature"), hint: t("warnings.sha1OrMd5") },
+  { value: "wildcard", label: t("warnings.wildcard"), hint: t("warnings.oneKeyForEverySubdomain") },
+  { value: "self-signed", label: t("warnings.selfSigned"), hint: t("warnings.aLeafThatSignedItself") },
+  { value: "long-lifetime", label: t("warnings.longLifetime"), hint: t("warnings.aLeafValidForOver") },
+]);
 
 const TONE = { valid: "success", expiring: "warning", critical: "danger", expired: "danger", "not-yet-valid": "info" } as const;
 
 function StateBadge({ state }: { state: State }) {
-  return <StatusBadge tone={TONE[state]}>{STATES.find((s) => s.value === state)?.label.split(",")[0] ?? state}</StatusBadge>;
+  const t = useT();
+  return <StatusBadge tone={TONE[state]}>{STATES(t).find((s) => s.value === state)?.label.split(",")[0] ?? state}</StatusBadge>;
 }
 
 function Left({ days, state }: { days: number; state: State }) {
-  if (state === "not-yet-valid") return <span className="text-xs text-fg-muted">not yet</span>;
-  return <span className="text-xs whitespace-nowrap">{days < 0 ? `${-days} d ago` : `${days} d`}</span>;
+  const t = useT();
+  if (state === "not-yet-valid") return <span className="text-xs text-fg-muted">{t("left.notYet")}</span>;
+  return <span className="text-xs whitespace-nowrap">{days < 0 ? t("left.dAgo", { value: -days }) : `${days} d`}</span>;
 }
 
 function Code({ children }: { children: ReactNode }) {
@@ -101,6 +94,7 @@ function Code({ children }: { children: ReactNode }) {
 }
 
 function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) {
+  const t = useT();
   const [state, setState] = useState<string[]>([]);
   const [warning, setWarning] = useState<string[]>([]);
   const [q, setQ] = useState("");
@@ -129,10 +123,10 @@ function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) 
   const shown = (rows ?? []).filter((c) => (state.length < 2 || state.includes(c.state)) && (warning.length < 2 || c.warnings.some((w) => warning.includes(w))));
 
   const columns: Column<Certificate>[] = [
-    { id: "state", header: "State", width: "120px", sortValue: (c) => c.notAfter, cell: (c) => <StateBadge state={c.state} /> },
+    { id: "state", header: t("certificatesPage.state"), width: "120px", sortValue: (c) => c.notAfter, cell: (c) => <StateBadge state={c.state} /> },
     {
       id: "name",
-      header: "Certificate",
+      header: t("certificatesPage.certificate"),
       width: "30%",
       sortValue: (c) => c.commonName ?? c.subject,
       cell: (c) => (
@@ -141,72 +135,72 @@ function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) 
             {c.commonName ?? c.subject}
           </a>
           <span className="certificates-clamp text-xs text-fg-muted" title={c.names.join(", ")}>
-            {c.names.length ? c.names.map((n) => n.replace(/^DNS:/, "")).join(", ") : c.ca ? "Certificate authority" : ""}
+            {c.names.length ? c.names.map((n) => n.replace(/^DNS:/, "")).join(", ") : c.ca ? t("certificatesPage.certificateAuthority") : ""}
           </span>
         </span>
       ),
     },
-    { id: "expires", header: "Expires", sortValue: (c) => c.notAfter, cell: (c) => <span className="text-xs whitespace-nowrap">{new Date(c.notAfter).toLocaleDateString()}</span> },
-    { id: "left", header: "Left", align: "right", sortValue: (c) => c.daysLeft, cell: (c) => <Left days={c.daysLeft} state={c.state} /> },
-    { id: "issuer", header: "Issuer", cell: (c) => <span className="certificates-wrap text-xs">{c.issuerCommonName ?? c.issuer}</span> },
+    { id: "expires", header: t("certificatesPage.expires"), sortValue: (c) => c.notAfter, cell: (c) => <span className="text-xs whitespace-nowrap">{new Date(c.notAfter).toLocaleDateString()}</span> },
+    { id: "left", header: t("certificatesPage.left"), align: "right", sortValue: (c) => c.daysLeft, cell: (c) => <Left days={c.daysLeft} state={c.state} /> },
+    { id: "issuer", header: t("certificatesPage.issuer"), cell: (c) => <span className="certificates-wrap text-xs">{c.issuerCommonName ?? c.issuer}</span> },
     {
       id: "warnings",
-      header: "Warnings",
+      header: t("certificatesPage.warnings"),
       cell: (c) => (
         <span className="flex flex-wrap gap-1">
           {c.warnings.map((w) => (
             <Badge key={w} tone="warning">
-              {WARNINGS.find((x) => x.value === w)?.label ?? w}
+              {WARNINGS(t).find((x) => x.value === w)?.label ?? w}
             </Badge>
           ))}
         </span>
       ),
     },
-    { id: "where", header: "Seen at", cell: (c) => <span className="certificates-wrap font-mono text-xs">{c.sources[0]?.source ?? ""}{c.sources.length > 1 ? ` +${c.sources.length - 1}` : ""}</span> },
+    { id: "where", header: t("certificatesPage.seenAt"), cell: (c) => <span className="certificates-wrap font-mono text-xs">{c.sources[0]?.source ?? ""}{c.sources.length > 1 ? ` +${c.sources.length - 1}` : ""}</span> },
   ];
 
   const s = summary;
   return (
     <>
-      <PageHeader title="Certificates" description={s ? `${plural(s.certificates, "certificate")} · expiry warnings at ${s.warnDays.join(", ")} days` : undefined} actions={<SearchInput label="Search name, issuer or place" className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />} />
+      <PageHeader title={t("certificatesPage.certificates")} description={s ? t("certificatesPage.expiryWarningsAtDays", { plural: t("plurals.certificate", { count: s.certificates }), value: s.warnDays.join(", ") }) : undefined} actions={<SearchInput label={t("certificatesPage.searchNameIssuerOrPlace")} className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />} />
       {s && (
         <KpiGrid minWidth={150}>
-          <KpiCard label="Expired" value={s.states.expired} tone={s.states.expired ? "danger" : "success"} />
-          <KpiCard label="Critical" value={s.states.critical} tone={s.states.critical ? "danger" : "success"} footer={<span className="text-xs text-fg-muted">under 7 days</span>} />
-          <KpiCard label="Expiring" value={s.states.expiring} tone={s.states.expiring ? "warning" : "success"} />
-          <KpiCard label="Valid" value={s.states.valid} tone="success" />
-          <KpiCard label="With warnings" value={s.withWarnings} tone={s.withWarnings ? "warning" : "success"} />
-          <KpiCard label="Next to expire" value={s.nextExpiry ? `${s.nextExpiry.daysLeft} d` : "–"} footer={<span className="certificates-clamp text-xs text-fg-muted">{s.nextExpiry?.commonName ?? ""}</span>} />
+          <KpiCard label={t("certificatesPage.expired")} value={s.states.expired} tone={s.states.expired ? "danger" : "success"} />
+          <KpiCard label={t("certificatesPage.critical")} value={s.states.critical} tone={s.states.critical ? "danger" : "success"} footer={<span className="text-xs text-fg-muted">{t("certificatesPage.under7Days")}</span>} />
+          <KpiCard label={t("certificatesPage.expiring")} value={s.states.expiring} tone={s.states.expiring ? "warning" : "success"} />
+          <KpiCard label={t("certificatesPage.valid")} value={s.states.valid} tone="success" />
+          <KpiCard label={t("certificatesPage.withWarnings")} value={s.withWarnings} tone={s.withWarnings ? "warning" : "success"} />
+          <KpiCard label={t("certificatesPage.nextToExpire")} value={s.nextExpiry ? `${s.nextExpiry.daysLeft} d` : "–"} footer={<span className="certificates-clamp text-xs text-fg-muted">{s.nextExpiry?.commonName ?? ""}</span>} />
         </KpiGrid>
       )}
       <FilterBar onClear={() => (setState([]), setWarning([]), setQ(""), setOnlyLeaves("all"))}>
-        <FacetFilter label="State" selected={state} onChange={setState} options={STATES.map((x) => ({ value: x.value, label: x.label.split(",")[0]!, count: s?.states[x.value] }))} />
-        <FacetFilter label="Warning" selected={warning} onChange={setWarning} options={WARNINGS.map((x) => ({ value: x.value, label: x.label }))} />
+        <FacetFilter label={t("certificatesPage.state")} selected={state} onChange={setState} options={STATES(t).map((x) => ({ value: x.value, label: x.label.split(",")[0]!, count: s?.states[x.value] }))} />
+        <FacetFilter label={t("certificatesPage.warning")} selected={warning} onChange={setWarning} options={WARNINGS(t).map((x) => ({ value: x.value, label: x.label }))} />
         <SegmentedControl
-          label="Kind"
+          label={t("certificatesPage.kind")}
           size="sm"
           value={onlyLeaves}
           onChange={setOnlyLeaves}
           options={[
-            { value: "all", label: "All" },
-            { value: "leaf", label: "Leaves" },
+            { value: "all", label: t("certificatesPage.all") },
+            { value: "leaf", label: t("certificatesPage.leaves") },
             { value: "ca", label: "CAs" },
           ]}
         />
       </FilterBar>
       <Panel
-        title="Soonest to expire first"
+        title={t("certificatesPage.soonestToExpireFirst")}
         flush
         footer={
           more ? (
             <Button size="sm" onClick={loadMore}>
-              Load more
+              {t("certificatesPage.loadMore")}
             </Button>
           ) : undefined
         }
       >
         <DataTable
-          label="Certificates"
+          label={t("certificatesPage.certificates")}
           columns={columns}
           rows={shown}
           loading={!rows}
@@ -214,13 +208,13 @@ function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) 
           minWidth={980}
           pageSize={50}
           empty={
-            <EmptyState title="No certificates">
+            <EmptyState title={t("certificatesPage.noCertificates")}>
               {s && s.certificates === 0 ? (
                 <>
-                  Send some, or add an endpoint to read. See <a href="/setup">Setup</a>.
+                  {t("certificatesPage.sendSomeOrAddAn")}{" "}<a href="/setup">{t("certificatesPage.setup")}</a>.
                 </>
               ) : (
-                "Nothing matches these filters."
+                t("certificatesPage.nothingMatchesTheseFilters")
               )}
             </EmptyState>
           }
@@ -231,6 +225,8 @@ function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) 
 }
 
 function CertificatePage({ call, id, reload }: { call: Call; id: string; reload: () => void }) {
+  const ago = useAgo();
+  const t = useT();
   const { can } = useAuth();
   const [cert, setCert] = useState<CertificateDetail | null>();
   const [removing, setRemoving] = useState(false);
@@ -246,8 +242,8 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
     );
   if (cert === null)
     return (
-      <EmptyState title="Certificate not found">
-        It may have been deleted. <a href="/certificates">Back to certificates</a>.
+      <EmptyState title={t("certificatePage.certificateNotFound")}>
+        {t("certificatePage.itMayHaveBeenDeleted")}{" "}<a href="/certificates">{t("certificatePage.backToCertificates")}</a>.
       </EmptyState>
     );
   const pairs: Array<[string, ReactNode]> = cert
@@ -266,15 +262,15 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
   return (
     <>
       <PageHeader
-        title={cert?.commonName ?? cert?.subject ?? "Certificate"}
-        description={cert ? `First seen ${ago(cert.firstSeen)} · last seen ${ago(cert.lastSeen)}` : undefined}
+        title={cert?.commonName ?? cert?.subject ?? t("certificatePage.certificate")}
+        description={cert ? t("certificatePage.firstSeenLastSeen", { ago: ago(cert.firstSeen), ago2: ago(cert.lastSeen) }) : undefined}
         actions={
           cert && (
             <>
               <StateBadge state={cert.state} />
               {can("admin") && (
                 <Button icon={<Trash2 />} onClick={() => setRemoving(true)}>
-                  Delete
+                  {t("certificatePage.delete")}
                 </Button>
               )}
             </>
@@ -282,18 +278,18 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
         }
       />
       {cert && cert.warnings.length > 0 && (
-        <Callout tone="warning" title="Worth a look">
+        <Callout tone="warning" title={t("certificatePage.worthALook")}>
           <ul className="certificates-list">
             {cert.warnings.map((w) => (
               <li key={w}>
-                {WARNINGS.find((x) => x.value === w)?.label}: {WARNINGS.find((x) => x.value === w)?.hint}
+                {WARNINGS(t).find((x) => x.value === w)?.label}: {WARNINGS(t).find((x) => x.value === w)?.hint}
               </li>
             ))}
           </ul>
         </Callout>
       )}
       <div className="grid gap-2.5 xl:grid-cols-2">
-        <Panel title="Details">
+        <Panel title={t("certificatePage.details")}>
           <dl className="certificates-pairs text-sm">
             {pairs.map(([k, v]) => (
               <div key={k} className="contents">
@@ -304,7 +300,7 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
           </dl>
         </Panel>
         <div className="flex flex-col gap-2.5">
-          <Panel title="Names" description={cert ? plural(cert.names.length, "name") : undefined}>
+          <Panel title={t("certificatePage.names")} description={cert ? t("plurals.name", { count: cert.names.length }) : undefined}>
             <ul className="certificates-list flex flex-wrap gap-1">
               {(cert?.names ?? []).map((n) => (
                 <li key={n}>
@@ -313,16 +309,16 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
               ))}
             </ul>
           </Panel>
-          <Panel title="Chain" description="What signed it, among the certificates seen here">
+          <Panel title={t("certificatePage.chain")} description={t("certificatePage.whatSignedItAmongThe")}>
             {cert && cert.chain.length === 0 ? (
-              <p className="m-0 text-sm text-fg-muted">{cert.selfSigned ? "It signed itself." : "The certificate above it has not been seen."}</p>
+              <p className="m-0 text-sm text-fg-muted">{cert.selfSigned ? t("certificatePage.itSignedItself") : t("certificatePage.theCertificateAboveItHas")}</p>
             ) : (
               <ul className="certificates-list flex flex-col gap-1 text-sm">
                 {(cert?.chain ?? []).map((c) => (
                   <li key={c.id} className="flex items-center gap-2">
                     <a href={`/certificates/${c.id}`}>{c.commonName ?? c.subject}</a>
                     <StateBadge state={c.state} />
-                    {c.selfSigned && <Badge>Root</Badge>}
+                    {c.selfSigned && <Badge>{t("certificatePage.root")}</Badge>}
                   </li>
                 ))}
               </ul>
@@ -330,13 +326,13 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
           </Panel>
         </div>
       </div>
-      <Panel title="Seen at" description="Position 0 is the leaf of a chain" flush>
+      <Panel title={t("certificatePage.seenAt")} description={t("certificatePage.position0IsTheLeaf")} flush>
         <DataTable
-          label="Places"
+          label={t("certificatePage.places")}
           columns={[
-            { id: "source", header: "Where", cell: (s: CertificateDetail["sources"][number]) => <span className="certificates-wrap font-mono text-xs">{s.source}</span> },
-            { id: "position", header: "Chain position", align: "right", cell: (s) => s.position },
-            { id: "seen", header: "Last seen", cell: (s) => <span className="text-xs">{ago(s.lastSeen)}</span> },
+            { id: "source", header: t("certificatePage.where"), cell: (s: CertificateDetail["sources"][number]) => <span className="certificates-wrap font-mono text-xs">{s.source}</span> },
+            { id: "position", header: t("certificatePage.chainPosition"), align: "right", cell: (s) => s.position },
+            { id: "seen", header: t("certificatePage.lastSeen"), cell: (s) => <span className="text-xs">{ago(s.lastSeen)}</span> },
           ]}
           rows={cert?.sources ?? []}
           loading={cert === undefined}
@@ -344,21 +340,21 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
           minWidth={520}
         />
       </Panel>
-      <Panel title="Certificate" description="Public only. A private key is never accepted.">
+      <Panel title={t("certificatePage.certificate")} description={t("certificatePage.publicOnlyAPrivateKey")}>
         <Code>{cert?.pem ?? ""}</Code>
       </Panel>
       <Dialog
         open={removing}
         onOpenChange={setRemoving}
-        title="Delete this certificate?"
-        description="It leaves the inventory with where it was seen. It comes back if it is sent or probed again."
+        title={t("certificatePage.deleteThisCertificate")}
+        description={t("certificatePage.itLeavesTheInventoryWith")}
         footer={
           <>
             <Button type="button" onClick={() => setRemoving(false)}>
-              Cancel
+              {t("certificatePage.cancel")}
             </Button>
             <Button type="button" variant="primary" onClick={() => void remove()}>
-              Delete
+              {t("certificatePage.delete")}
             </Button>
           </>
         }
@@ -370,6 +366,8 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
 }
 
 function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summary; reload: () => void }) {
+  const ago = useAgo();
+  const t = useT();
   const { can } = useAuth();
   const [rows, setRows] = useState<Endpoint[]>();
   const [adding, setAdding] = useState(false);
@@ -405,7 +403,7 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
   const columns: Column<Endpoint>[] = [
     {
       id: "host",
-      header: "Endpoint",
+      header: t("endpointsPage.endpoint"),
       sortValue: (e) => e.host,
       cell: (e) => (
         <span className="flex min-w-0 flex-col gap-0.5">
@@ -414,40 +412,40 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
           </span>
           {(e.source === "file" || e.server) && (
             <span className="flex flex-wrap items-center gap-1.5">
-              {e.source === "file" && <Badge tone="neutral">{e.name ? `From file: ${e.name}` : "From file"}</Badge>}
-              {e.server && <Badge tone="neutral">{`on ${e.server}`}</Badge>}
+              {e.source === "file" && <Badge tone="neutral">{e.name ? t("endpointsPage.fromFile", { name: e.name }) : t("endpointsPage.fromFile2")}</Badge>}
+              {e.server && <Badge tone="neutral">{t("endpointsPage.on", { server: e.server })}</Badge>}
             </span>
           )}
         </span>
       ),
     },
-    { id: "cert", header: "Certificate", cell: (e) => (e.certificate ? <a href={`/certificates/${e.certificate.id}`}>{e.certificate.commonName ?? "certificate"}</a> : <span className="text-xs text-fg-muted">none yet</span>) },
-    { id: "state", header: "State", cell: (e) => (e.certificate ? <span className="flex items-center gap-1.5"><StateBadge state={e.certificate.state} /><Left days={e.certificate.daysLeft} state={e.certificate.state} /></span> : "–") },
+    { id: "cert", header: t("endpointsPage.certificate"), cell: (e) => (e.certificate ? <a href={`/certificates/${e.certificate.id}`}>{e.certificate.commonName ?? "certificate"}</a> : <span className="text-xs text-fg-muted">{t("endpointsPage.noneYet")}</span>) },
+    { id: "state", header: t("endpointsPage.state"), cell: (e) => (e.certificate ? <span className="flex items-center gap-1.5"><StateBadge state={e.certificate.state} /><Left days={e.certificate.daysLeft} state={e.certificate.state} /></span> : "–") },
     {
       id: "chain",
-      header: "Chain",
-      description: "Whether the system's roots trust the chain and it fits the name. The expiry above does not depend on it.",
-      cell: (e) => (e.chainValid === null ? "–" : e.chainValid ? <StatusBadge tone="success">Trusted</StatusBadge> : <span title={e.chainError ?? undefined}><StatusBadge tone="warning">Not trusted</StatusBadge></span>),
+      header: t("endpointsPage.chain"),
+      description: t("endpointsPage.whetherTheSystemSRoots"),
+      cell: (e) => (e.chainValid === null ? "–" : e.chainValid ? <StatusBadge tone="success">{t("endpointsPage.trusted")}</StatusBadge> : <span title={e.chainError ?? undefined}><StatusBadge tone="warning">{t("endpointsPage.notTrusted")}</StatusBadge></span>),
     },
     {
       id: "probe",
-      header: "Last probe",
+      header: t("endpointsPage.lastProbe"),
       cell: (e) => (e.lastError ? <span className="certificates-clamp text-xs text-danger" title={e.lastError}>{e.lastError}</span> : <span className="text-xs">{ago(e.lastProbeAt)}</span>),
     },
     {
       id: "actions",
-      header: <span className="sr-only">Actions</span>,
-      label: "Actions",
+      header: <span className="sr-only">{t("endpointsPage.actions")}</span>,
+      label: t("endpointsPage.actions"),
       align: "right",
       cell: (e) => (
         <span className="flex justify-end gap-1">
           {can("editor") && (
-            <IconButton label={`Probe ${e.host} now`} size="sm" onClick={() => void probe(e.id)} disabled={busy === e.id}>
+            <IconButton label={t("endpointsPage.probeNow", { host: e.host })} size="sm" onClick={() => void probe(e.id)} disabled={busy === e.id}>
               <RefreshCw />
             </IconButton>
           )}
           {can("admin") && e.source === "ui" && (
-            <IconButton label={`Remove ${e.host}`} size="sm" onClick={() => void call(`/api/v1/endpoints/${e.id}`, { method: "DELETE" }).then(() => (load(), reload()), () => {})}>
+            <IconButton label={t("endpointsPage.remove", { host: e.host })} size="sm" onClick={() => void call(`/api/v1/endpoints/${e.id}`, { method: "DELETE" }).then(() => (load(), reload()), () => {})}>
               <Trash2 />
             </IconButton>
           )}
@@ -458,48 +456,47 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
   return (
     <>
       <PageHeader
-        title="Endpoints"
-        description="Addresses this server connects to, with a TLS handshake, to read the certificates they present: added here or from the endpoints file. Public addresses only; certificates on private networks are sent by a collector there."
+        title={t("endpointsPage.endpoints")}
+        description={t("endpointsPage.addressesThisServerConnectsTo")}
         actions={
           can("admin") && (
             <Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)}>
-              Add endpoint
+              {t("endpointsPage.addEndpoint")}
             </Button>
           )
         }
       />
       {summary?.endpointsFile?.error && (
-        <Callout tone="danger" title="The endpoints file is not applied">
-          {summary.endpointsFile.error} The endpoints from its last good version stay until it is fixed ({summary.endpointsFile.path}).
-        </Callout>
+        <Callout tone="danger" title={t("endpointsPage.theEndpointsFileIsNot")}>
+          {t("endpointsPage.theEndpointsFromItsLast", { error: summary.endpointsFile.error, path: summary.endpointsFile.path })}</Callout>
       )}
       {!!summary?.endpointsFile?.warnings.length && (
-        <Callout tone="warning" title="The endpoints file has something to fix">
+        <Callout tone="warning" title={t("endpointsPage.theEndpointsFileHasSomething")}>
           {summary.endpointsFile.warnings.join(" ")}
         </Callout>
       )}
       <Panel flush>
-        <DataTable label="Endpoints" columns={columns} rows={rows ?? []} loading={!rows} getRowId={(e) => e.id} minWidth={900} empty={<EmptyState title="No endpoints">{can("admin") ? "Add a host to read its certificate every few hours." : "An admin adds the hosts to read."}</EmptyState>} />
+        <DataTable label={t("endpointsPage.endpoints")} columns={columns} rows={rows ?? []} loading={!rows} getRowId={(e) => e.id} minWidth={900} empty={<EmptyState title={t("endpointsPage.noEndpoints")}>{can("admin") ? t("endpointsPage.addAHostToRead") : t("endpointsPage.anAdminAddsTheHosts")}</EmptyState>} />
       </Panel>
       <Dialog
         open={adding}
         onOpenChange={(open) => !open && close()}
-        title="Add an endpoint"
-        description="The server connects to it from here. A name that resolves to a private address is refused."
+        title={t("endpointsPage.addAnEndpoint")}
+        description={t("endpointsPage.theServerConnectsToIt")}
         onSubmit={add}
         footer={
           <>
             <Button type="button" onClick={close}>
-              Cancel
+              {t("endpointsPage.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!host.trim()}>
-              Add and read
+              {t("endpointsPage.addAndRead")}
             </Button>
           </>
         }
       >
-        <TextField label="Host" value={host} onChange={(e) => setHost(e.target.value)} hint="A name such as shop.example.com, or a public address." error={error} />
-        <TextField label="Port" value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
+        <TextField label={t("endpointsPage.host")} value={host} onChange={(e) => setHost(e.target.value)} hint={t("endpointsPage.aNameSuchAsShop")} error={error} />
+        <TextField label={t("endpointsPage.port")} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
       </Dialog>
     </>
   );
@@ -508,11 +505,12 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
 // ---------------------------------------------------------------- Setup
 
 function SetupPage() {
+  const t = useT();
   const origin = window.location.origin;
   return (
     <>
-      <PageHeader title="Setup" description="Two ways to know every certificate you have: send them, or let this server read them." />
-      <Panel title="Send certificates" description="From a cron job, CI or a collector. Use CERTIFICATES_INGEST_TOKEN, set where certificates runs, or an API token with the editor role from API tokens.">
+      <PageHeader title={t("setupPage.setup")} description={t("setupPage.twoWaysToKnowEvery")} />
+      <Panel title={t("setupPage.sendCertificates")} description={t("setupPage.fromACronJobCi")}>
         <Code>{`# a file, or a chain
 curl -sf -X POST -H "Authorization: Bearer $CERTIFICATES_INGEST_TOKEN" --data-binary @/etc/ssl/certs/shop.pem \\
   "${origin}/api/v1/certificates?source=web-1:/etc/ssl/certs/shop.pem"
@@ -520,13 +518,13 @@ curl -sf -X POST -H "Authorization: Bearer $CERTIFICATES_INGEST_TOKEN" --data-bi
 # what a server presents
 openssl s_client -connect shop.example.com:443 -showcerts </dev/null 2>/dev/null | curl -sf -X POST \\
   -H "Authorization: Bearer $CERTIFICATES_INGEST_TOKEN" --data-binary @- "${origin}/api/v1/certificates?source=shop.example.com:443"`}</Code>
-        <p className="mt-2 mb-0 text-sm text-fg-muted">A body that holds a private key of any kind is refused whole, and nothing of it is kept.</p>
+        <p className="mt-2 mb-0 text-sm text-fg-muted">{t("setupPage.aBodyThatHoldsA")}</p>
       </Panel>
-      <Panel title="Read endpoints" description="Under Endpoints, add a public host and port. The server connects with a TLS handshake every few hours, and reports apart whether the chain is trusted.">
+      <Panel title={t("setupPage.readEndpoints")} description={t("setupPage.underEndpointsAddAPublic")}>
         <ul className="certificates-list flex flex-col gap-1 text-sm text-fg-muted">
-          <li>Names that resolve to a private, loopback or link-local address are refused, here and at every probe.</li>
-          <li>Certificates on private networks are sent by a collector in that network.</li>
-          <li>Warnings come at the thresholds in the header of Certificates, once per crossing: GET /api/v1/expiring lists them, and /metrics has openasy_certificates_expiring for alerts.</li>
+          <li>{t("setupPage.namesThatResolveToA")}</li>
+          <li>{t("setupPage.certificatesOnPrivateNetworksAre")}</li>
+          <li>{t("setupPage.warningsComeAtTheThresholds")}</li>
         </ul>
       </Panel>
     </>
@@ -535,9 +533,10 @@ openssl s_client -connect shop.example.com:443 -showcerts </dev/null 2>/dev/null
 
 /** The first screen, until the first certificate arrives. The summary is polled, so it gives way by itself. */
 function WelcomePage() {
+  const t = useT();
   return (
     <>
-      <PageHeader title="Get started" description="Certificates show here as soon as the first one arrives." actions={<StatusBadge tone="info">Waiting for the first certificate</StatusBadge>} />
+      <PageHeader title={t("welcomePage.getStarted")} description={t("welcomePage.certificatesShowHereAsSoon")} actions={<StatusBadge tone="info">{t("welcomePage.waitingForTheFirstCertificate")}</StatusBadge>} />
       <SetupPage />
     </>
   );
@@ -547,8 +546,9 @@ function WelcomePage() {
 
 /** Account, Members, Sign-in and API tokens: the screens come from @openasy/auth. */
 function SettingsPage({ page }: { page: "account" | "members" | "signin" | "tokens" }) {
+  const t = useT();
   const { signOut, can } = useAuth();
-  if (page !== "account" && !can("admin")) return <EmptyState title="Admins only">Ask an admin of this certificates for access.</EmptyState>;
+  if (page !== "account" && !can("admin")) return <EmptyState title={t("settingsPage.adminsOnly")}>{t("settingsPage.askAnAdminOfThis")}</EmptyState>;
   const titles = {
     account: ["Account", "Your profile, password, two-step verification and where you are signed in."],
     members: ["Members", "Who can sign in to this certificates, and with which role. Viewers see everything; editors also send certificates and probe endpoints now; admins also add and remove endpoints, delete certificates, and manage members and tokens."],
@@ -563,7 +563,7 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
         actions={
           page === "account" && (
             <Button icon={<LogOut />} onClick={() => void signOut()}>
-              Sign out
+              {t("settingsPage.signOut")}
             </Button>
           )
         }
@@ -574,6 +574,7 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
 }
 
 function Product() {
+  const msg = useT();
   const [theme, setTheme] = useThemePreference();
   const { me, can } = useAuth();
   const route = parseRoute(usePath());
@@ -597,19 +598,19 @@ function Product() {
   }, [reload]);
 
   const nav = [
-    { id: "certificates", label: "Certificates", icon: BadgeCheck, count: summary?.certificates },
-    { id: "endpoints", label: "Endpoints", icon: Radar, count: summary?.failingEndpoints || undefined },
+    { id: "certificates", label: msg("product.certificates"), icon: BadgeCheck, count: summary?.certificates },
+    { id: "endpoints", label: msg("product.endpoints"), icon: Radar, count: summary?.failingEndpoints || undefined },
   ];
   const footerNav = [
-    { id: "setup", label: "Setup", icon: Settings2 },
+    { id: "setup", label: msg("product.setup"), icon: Settings2 },
     ...(can("admin")
       ? [
-          { id: "members", label: "Members", icon: Users },
-          { id: "signin", label: "Sign-in", icon: LogIn },
-          { id: "tokens", label: "API tokens", icon: KeyRound },
+          { id: "members", label: msg("product.members"), icon: Users },
+          { id: "signin", label: msg("product.signIn"), icon: LogIn },
+          { id: "tokens", label: msg("product.apiTokens"), icon: KeyRound },
         ]
       : []),
-    { id: "account", label: "Account", icon: UserRound },
+    { id: "account", label: msg("product.account"), icon: UserRound },
   ];
   const active = route.page === "certificate" ? "certificates" : route.page;
   const roleName = me.user.role.charAt(0).toUpperCase() + me.user.role.slice(1);
