@@ -39,6 +39,26 @@ it presents, and says apart whether the system's roots trust it and it fits the 
 that resolves to a private, loopback or link-local address is refused, when it is added and at every probe, so the
 server cannot be used to reach your internal network. Certificates on private networks are sent by a collector there.
 
+### From a file
+
+Endpoints can also come from a file the install keeps, the same file Uptime reads (ADR 0052). Mount it and set
+`OPENASY_ENDPOINTS`; Certificates reads it at start and again within a minute of a change, and probes new endpoints at
+once. Its `https://` and `tls://` entries are endpoints here; the others are Uptime's.
+
+```yaml
+endpoints:
+  - name: Website
+    url: https://www.example.com
+    server: web-1                     # the server it runs on, by its name in the hosts file
+  - name: Mail
+    url: tls://mail.example.com:465
+```
+
+An endpoint from the file shows **From file** and is removed there: the API answers 409 to a delete. Endpoints added
+in the UI stay as they are; when one has the same address as an entry, it keeps it, and the file says so. A name on a
+private address is kept with the probe's error rather than refusing the file. A file with a mistake is not applied at
+all: the endpoints from its last good version stay, and the Endpoints page and the log say what to fix.
+
 ## State and warnings
 
 | State | When |
@@ -76,7 +96,8 @@ are on http://localhost:8080, the API reference at http://localhost:8080/api/doc
 | `CERTIFICATES_PUBLIC_URL` | `http://localhost:8080` | The address people open, with `https://` behind your TLS proxy |
 | `OPENASY_PRODUCTS` | | The install's other OpenAsy products, for the product switcher. Give every product the same value |
 | `CERTIFICATES_INGEST_TOKEN` | | Lets cron jobs, CI and collectors send certificates, and nothing else. An API token with the editor role works too |
-| `CERTIFICATES_WARN_DAYS` | `30,14,7,1` | Expiry thresholds in days, largest first |
+| `OPENASY_CERT_WARN_DAYS` | `30,14,7,1` | Expiry thresholds in days, largest first. Uptime reads the same variable, so give both the same value: its TLS checks fail at the critical one. `CERTIFICATES_WARN_DAYS` is still read, for now |
+| `OPENASY_ENDPOINTS` | | A YAML file of endpoints, shared with Uptime; see [From a file](#from-a-file) |
 | `CERTIFICATES_PROBE_HOURS` | `6` | How often endpoints are read |
 | `CERTIFICATES_SECRETS_KEY_FILE` | `/run/secrets/openasy-kek` | 32-byte key-encryption key |
 | `CERTIFICATES_DB` | `/data/certificates.db` | SQLite file (WAL), on the `/data` volume |

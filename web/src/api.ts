@@ -47,6 +47,12 @@ export interface Endpoint {
   id: string;
   host: string;
   port: number;
+  /** The entry's name in the endpoints file; null for endpoints added here. */
+  name: string | null;
+  /** file: from the endpoints file (OPENASY_ENDPOINTS); removed there, not here. */
+  source: "ui" | "file";
+  /** The server it runs on, by its name in the hosts file. */
+  server: string | null;
   lastProbeAt: string | null;
   lastError: string | null;
   chainValid: boolean | null;
@@ -63,6 +69,16 @@ export interface Summary {
   failingEndpoints: number;
   warnDays: number[];
   nextExpiry: { id: string; commonName: string | null; notAfter: string; daysLeft: number } | null;
+  endpointsFile: EndpointsFile | null;
+}
+
+/** The endpoints file (ADR 0052), shared with Uptime: a file that cannot be applied leaves its last good version. */
+export interface EndpointsFile {
+  path: string;
+  appliedAt: string | null;
+  entries: number;
+  error: string | null;
+  warnings: string[];
 }
 
 export class Unauthorized extends Error {}

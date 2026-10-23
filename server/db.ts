@@ -56,6 +56,11 @@ const MIGRATIONS = [
      crossed_at TEXT NOT NULL,
      PRIMARY KEY (cert_id, threshold)
    )`,
+  `-- Endpoints from the endpoints file (OPENASY_ENDPOINTS, ADR 0052) are changed there, not here. name is the entry's
+   -- name in the file; server names the server the endpoint runs on, from the hosts file.
+   ALTER TABLE endpoints ADD COLUMN source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'file'));
+   ALTER TABLE endpoints ADD COLUMN name TEXT;
+   ALTER TABLE endpoints ADD COLUMN server TEXT`,
 ];
 
 /** Opens the product's single SQLite file in WAL mode (ADR 0011) and migrates it forward. */

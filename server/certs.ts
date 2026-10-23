@@ -1,6 +1,7 @@
 import { X509Certificate } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import { fileId, type Endpoint } from "./endpoints.ts";
 import { fetchChain, resolvePublic, validHost, type ProbeOptions } from "./probe.ts";
 import { parsePem, PemError, type Parsed } from "./x509.ts";
 
@@ -65,7 +66,7 @@ export function parseLimit(value: string | null, max = 500, fallback = 100): num
 /** "30,14,7,1" as a list of days, largest first. */
 export function parseWarnDays(value: string | undefined): number[] {
   const days = (value ?? "30,14,7,1").split(",").map((d) => Number(d.trim()));
-  if (!days.length || days.some((d) => !Number.isInteger(d) || d < 1 || d > 365)) throw new Error("CERTIFICATES_WARN_DAYS is a comma-separated list of days, 1 to 365, such as 30,14,7,1");
+  if (!days.length || days.some((d) => !Number.isInteger(d) || d < 1 || d > 365)) throw new Error("OPENASY_CERT_WARN_DAYS is a comma-separated list of days, 1 to 365, such as 30,14,7,1");
   return [...new Set(days)].sort((a, b) => b - a);
 }
 
@@ -259,6 +260,9 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
       id: e.id as string,
       host: e.host as string,
       port: e.port as number,
+      name: (e.name as string | null) ?? null,
+      source: e.source as "ui" | "file",
+      server: (e.server as string | null) ?? null,
       lastProbeAt: (e.last_probe_at as string | null) ?? null,
       lastError: (e.last_error as string | null) ?? null,
       chainValid: e.chain_valid === null ? null : e.chain_valid === 1,
@@ -349,7 +353,56 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
     listEndpoints: () => (db.prepare("SELECT * FROM endpoints ORDER BY host, port").all() as Array<Record<string, any>>).map(presentEndpoint),
     endpoint: (id: string) => presentEndpoint(endpointRow(id)),
     deleteEndpoint(id: string) {
-      if (db.prepare("DELETE FROM endpoints WHERE id = ?").run(id).changes === 0) throw notFound("The endpoint");
+      if (endpointRow(id).source === "file") throw new CertsError(409, "conflict", "This endpoint comes from the endpoints file (OPENASY_ENDPOINTS). Remove it there.");
+      db.prepare("DELETE FROM endpoints WHERE id = ?").run(id);
+    },
+
+    /**
+     * Makes the endpoints from the endpoints file match it (ADR 0052): the https:// and tls:// entries, by host and
+     * port. Endpoints added here are left alone. The addresses are checked again at every probe, so a name on a private
+     * address is kept with the error the probe gives it rather than refusing the file. Returns what to fix that did not
+     * stop it.
+     */
+    syncFile(endpoints: Endpoint[]): string[] {
+      const wanted = endpoints.filter((e) => e.kind === "tls" || e.url.startsWith("https://"));
+      for (const e of wanted) if (!validHost(e.host)) throw new Error(`${e.name}: ${e.host} is not a host name or an address.`);
+      const warnings: string[] = [];
+      const kept: string[] = [];
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        for (const e of wanted) {
+          const id = fileId(e.name);
+          const host = e.host.toLowerCase();
+          const same = db.prepare("SELECT id, source FROM endpoints WHERE host = ? AND port = ?").get(host, e.port) as { id: string; source: string } | undefined;
+          if (same && same.id !== id) {
+            // Two entries for one address, such as https:// and tls://, are one endpoint.
+            if (same.source === "ui") warnings.push(`${e.name}: ${host}:${e.port} was added in Certificates; remove it there to let the file manage it.`);
+            continue;
+          }
+          kept.push(id);
+          const current = db.prepare("SELECT host, port FROM endpoints WHERE id = ?").get(id) as { host: string; port: number } | undefined;
+          if (!current) {
+            db.prepare("INSERT INTO endpoints (id, host, port, created_at, source, name, server) VALUES (?, ?, ?, ?, 'file', ?, ?)").run(id, host, e.port, now(), e.name, e.server);
+          } else if (current.host !== host || current.port !== e.port) {
+            // Another address is another endpoint: what was probed at the old one is not its.
+            db.prepare("UPDATE endpoints SET host = ?, port = ?, name = ?, server = ?, last_probe_at = NULL, last_error = NULL, chain_valid = NULL, chain_error = NULL, cert_id = NULL WHERE id = ?").run(host, e.port, e.name, e.server, id);
+          } else {
+            db.prepare("UPDATE endpoints SET name = ?, server = ? WHERE id = ?").run(e.name, e.server, id);
+          }
+        }
+        const gone = (db.prepare("SELECT id FROM endpoints WHERE source = 'file'").all() as Array<{ id: string }>).filter((r) => !kept.includes(r.id));
+        for (const r of gone) db.prepare("DELETE FROM endpoints WHERE id = ?").run(r.id);
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+      return warnings;
+    },
+
+    /** Endpoints never probed yet, such as the ones a file just added, so they do not wait for the next round. */
+    async probeNew() {
+      for (const e of db.prepare("SELECT id FROM endpoints WHERE last_probe_at IS NULL ORDER BY created_at").all() as Array<{ id: string }>) await probeEndpoint(e.id);
     },
     probeEndpoint,
     /** Every endpoint, one after another: a probe is a connection to someone else's server. */

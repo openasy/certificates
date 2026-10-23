@@ -552,6 +552,9 @@
           "404": {
             "$ref": "#/components/responses/Problem"
           },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
           "503": {
             "$ref": "#/components/responses/Problem"
           }
@@ -1292,6 +1295,9 @@
           "id",
           "host",
           "port",
+          "name",
+          "source",
+          "server",
           "lastProbeAt",
           "lastError",
           "chainValid",
@@ -1308,6 +1314,36 @@
           },
           "port": {
             "type": "integer"
+          },
+          "name": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "The entry's name in the endpoints file; null for endpoints added here."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ui",
+              "file"
+            ],
+            "description": "file: from the endpoints file (OPENASY_ENDPOINTS); removed there, so DELETE answers 409. A probe still works."
+          },
+          "server": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "The server the endpoint runs on, by its name in the hosts file. Set from the endpoints file only."
           },
           "lastProbeAt": {
             "oneOf": [
@@ -1444,7 +1480,8 @@
           "endpoints",
           "failingEndpoints",
           "warnDays",
-          "nextExpiry"
+          "nextExpiry",
+          "endpointsFile"
         ],
         "properties": {
           "certificates": {
@@ -1531,9 +1568,71 @@
                 "additionalProperties": false
               }
             ]
+          },
+          "endpointsFile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EndpointsFile"
+              }
+            ],
+            "description": "null when OPENASY_ENDPOINTS is not set."
           }
         },
         "additionalProperties": false
+      },
+      "EndpointsFile": {
+        "type": "object",
+        "required": [
+          "path",
+          "appliedAt",
+          "entries",
+          "error",
+          "warnings"
+        ],
+        "additionalProperties": false,
+        "description": "The endpoints file (ADR 0052), shared with Uptime. It is read again within a minute of a change; a file that cannot be applied leaves the endpoints from its last good version.",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "appliedAt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "format": "date-time"
+              }
+            ],
+            "description": "When it was last read and applied; null if it never was."
+          },
+          "entries": {
+            "type": "integer",
+            "description": "Entries in the file, of every kind; only https:// and tls:// ones are endpoints here."
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Why the file on disk is not applied."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What to fix that did not stop the file from being applied."
+          }
+        }
       }
     }
   }

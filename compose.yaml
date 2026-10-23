@@ -15,6 +15,7 @@ services:
       - "127.0.0.1:8080:8080"   # UI and API; put a TLS proxy in front to reach it from elsewhere
     volumes:
       - certificates-data:/data   # SQLite database: certificates, where they were seen, and endpoints
+      # - ./endpoints.yaml:/config/endpoints.yaml:ro   # the install's endpoints, shared with Uptime
     secrets:
       - openasy-kek   # mounted at /run/secrets/openasy-kek
     environment:
@@ -22,6 +23,10 @@ services:
       CERTIFICATES_PUBLIC_URL: ${CERTIFICATES_PUBLIC_URL:-http://localhost:8080}
       # For cron jobs, CI and collectors: it can send certificates and nothing else. Or use an API token with the editor role from Settings.
       CERTIFICATES_INGEST_TOKEN: ${CERTIFICATES_INGEST_TOKEN:-}
+      # Endpoints from the endpoints file, the same file Uptime reads (ADR 0052):
+      # OPENASY_ENDPOINTS: /config/endpoints.yaml
+      # Expiry thresholds in days; give Uptime the same value:
+      # OPENASY_CERT_WARN_DAYS: 30,14,7,1
       # Sign in with your identity provider (OIDC), see the README:
       # OPENASY_OIDC_ISSUER: https://login.example.com
       # OPENASY_OIDC_CLIENT_ID: certificates

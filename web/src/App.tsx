@@ -369,7 +369,7 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
   );
 }
 
-function EndpointsPage({ call, reload }: { call: Call; reload: () => void }) {
+function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summary; reload: () => void }) {
   const { can } = useAuth();
   const [rows, setRows] = useState<Endpoint[]>();
   const [adding, setAdding] = useState(false);
@@ -403,7 +403,24 @@ function EndpointsPage({ call, reload }: { call: Call; reload: () => void }) {
   };
 
   const columns: Column<Endpoint>[] = [
-    { id: "host", header: "Endpoint", sortValue: (e) => e.host, cell: (e) => <span className="certificates-wrap font-mono text-xs">{e.host}:{e.port}</span> },
+    {
+      id: "host",
+      header: "Endpoint",
+      sortValue: (e) => e.host,
+      cell: (e) => (
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="certificates-wrap font-mono text-xs">
+            {e.host}:{e.port}
+          </span>
+          {(e.source === "file" || e.server) && (
+            <span className="flex flex-wrap items-center gap-1.5">
+              {e.source === "file" && <Badge tone="neutral">{e.name ? `From file: ${e.name}` : "From file"}</Badge>}
+              {e.server && <Badge tone="neutral">{`on ${e.server}`}</Badge>}
+            </span>
+          )}
+        </span>
+      ),
+    },
     { id: "cert", header: "Certificate", cell: (e) => (e.certificate ? <a href={`/certificates/${e.certificate.id}`}>{e.certificate.commonName ?? "certificate"}</a> : <span className="text-xs text-fg-muted">none yet</span>) },
     { id: "state", header: "State", cell: (e) => (e.certificate ? <span className="flex items-center gap-1.5"><StateBadge state={e.certificate.state} /><Left days={e.certificate.daysLeft} state={e.certificate.state} /></span> : "–") },
     {
@@ -429,7 +446,7 @@ function EndpointsPage({ call, reload }: { call: Call; reload: () => void }) {
               <RefreshCw />
             </IconButton>
           )}
-          {can("admin") && (
+          {can("admin") && e.source === "ui" && (
             <IconButton label={`Remove ${e.host}`} size="sm" onClick={() => void call(`/api/v1/endpoints/${e.id}`, { method: "DELETE" }).then(() => (load(), reload()), () => {})}>
               <Trash2 />
             </IconButton>
@@ -442,7 +459,7 @@ function EndpointsPage({ call, reload }: { call: Call; reload: () => void }) {
     <>
       <PageHeader
         title="Endpoints"
-        description="Addresses this server connects to, with a TLS handshake, to read the certificates they present. Public addresses only; certificates on private networks are sent by a collector there."
+        description="Addresses this server connects to, with a TLS handshake, to read the certificates they present: added here or from the endpoints file. Public addresses only; certificates on private networks are sent by a collector there."
         actions={
           can("admin") && (
             <Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)}>
@@ -451,6 +468,16 @@ function EndpointsPage({ call, reload }: { call: Call; reload: () => void }) {
           )
         }
       />
+      {summary?.endpointsFile?.error && (
+        <Callout tone="danger" title="The endpoints file is not applied">
+          {summary.endpointsFile.error} The endpoints from its last good version stay until it is fixed ({summary.endpointsFile.path}).
+        </Callout>
+      )}
+      {!!summary?.endpointsFile?.warnings.length && (
+        <Callout tone="warning" title="The endpoints file has something to fix">
+          {summary.endpointsFile.warnings.join(" ")}
+        </Callout>
+      )}
       <Panel flush>
         <DataTable label="Endpoints" columns={columns} rows={rows ?? []} loading={!rows} getRowId={(e) => e.id} minWidth={900} empty={<EmptyState title="No endpoints">{can("admin") ? "Add a host to read its certificate every few hours." : "An admin adds the hosts to read."}</EmptyState>} />
       </Panel>
@@ -610,7 +637,7 @@ function Product() {
       ) : route.page === "certificate" ? (
         <CertificatePage key={route.id} call={call} id={route.id} reload={reload} />
       ) : route.page === "endpoints" ? (
-        <EndpointsPage call={call} reload={reload} />
+        <EndpointsPage call={call} summary={summary} reload={reload} />
       ) : route.page === "account" || route.page === "members" || route.page === "signin" || route.page === "tokens" ? (
         <SettingsPage page={route.page} />
       ) : (

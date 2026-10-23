@@ -5,6 +5,7 @@ import { extname, join, normalize } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { createGunzip } from "node:zlib";
 import { AuthError, mergeOpenApi, sendProblem, type Auth, type Role } from "@openasy/auth";
+import type { EndpointsFileState } from "./endpoints.ts";
 import { log } from "./log.ts";
 import { countRequest, renderMetrics } from "./metrics.ts";
 import type { ProductLink } from "./products.ts";
@@ -31,6 +32,8 @@ export interface AppOptions {
   serveMetrics?: boolean;
   /** The install's OpenAsy products and their addresses, from OPENASY_PRODUCTS, for the product switcher. */
   products?: ProductLink[];
+  /** Where the endpoints file stands (OPENASY_ENDPOINTS, ADR 0052); absent when there is none. */
+  endpointsFile?: () => EndpointsFileState;
 }
 
 function metricsText(certs: Certs, version: string) {
@@ -181,7 +184,7 @@ function certFilter(url: URL): CertFilter {
   return { state: state as State | undefined, warning, q: q || undefined, ca: bool(url, "ca"), sort };
 }
 
-export function createApp({ db, certs, version, auth, adminToken, ingestToken, webDir, docsDir, openapi, serveMetrics = true, products = [] }: AppOptions) {
+export function createApp({ db, certs, version, auth, adminToken, ingestToken, webDir, docsDir, openapi, serveMetrics = true, products = [], endpointsFile }: AppOptions) {
   // The served description includes /api/v1/auth from @openasy/auth, so the API reference documents sign-in too.
   const spec = openapi && JSON.stringify({ ...mergeOpenApi(openapi), info: { ...(openapi.info as object), version } });
   const noContent = (res: ServerResponse) => {
@@ -194,7 +197,7 @@ export function createApp({ db, certs, version, auth, adminToken, ingestToken, w
   const routes: Route[] = [
     { method: "GET", path: "/api/v1/version", auth: "none", handle: () => ({ product: "certificates", version }) },
     { method: "GET", path: "/api/v1/products", auth: "viewer", handle: () => ({ products }) },
-    { method: "GET", path: "/api/v1/summary", auth: "viewer", handle: () => certs.summary() },
+    { method: "GET", path: "/api/v1/summary", auth: "viewer", handle: () => ({ ...certs.summary(), endpointsFile: endpointsFile?.() ?? null }) },
 
     // Certificates in, as PEM text, from CI, a cron job or a collector. A private key in the body refuses all of it.
     {

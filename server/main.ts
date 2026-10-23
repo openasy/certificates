@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { createAuth, oidcFromEnv, readSecretsKey } from "@openasy/auth";
 import { createApp, createMetricsHandler } from "./app.ts";
 import { openDb } from "./db.ts";
+import { watchEndpoints } from "./endpoints.ts";
 import { log } from "./log.ts";
 import { parseProducts } from "./products.ts";
 import { createCerts, parseWarnDays } from "./certs.ts";
@@ -12,7 +13,10 @@ const port = Number(process.env.PORT ?? 8080);
 const dbPath = process.env.CERTIFICATES_DB ?? "/data/certificates.db";
 const retentionDays = Number(process.env.CERTIFICATES_RETENTION_DAYS ?? 365);
 const probeHours = Number(process.env.CERTIFICATES_PROBE_HOURS ?? 6);
-const warnDays = parseWarnDays(process.env.CERTIFICATES_WARN_DAYS);
+// Shared with Uptime, whose TLS checks fail at the critical one (ADR 0052). The old name is still read, for now.
+const warnDays = parseWarnDays(process.env.OPENASY_CERT_WARN_DAYS ?? process.env.CERTIFICATES_WARN_DAYS);
+// The install's endpoints, one file for every product that watches them (ADR 0052).
+const endpointsPath = process.env.OPENASY_ENDPOINTS?.trim() || undefined;
 const webDir = new URL("../dist/web", import.meta.url).pathname;
 const docsDir = new URL("../dist/docs", import.meta.url).pathname;
 const openapi = JSON.parse(readFileSync(new URL("../openapi.json", import.meta.url), "utf8")) as Record<string, unknown>;
@@ -41,6 +45,24 @@ const auth = createAuth({
   onEvent: (event) => log(event.type === "sign-in-failed" ? "warn" : "info", "auth", { event }),
 });
 const certs = createCerts(db, { retentionDays, warnDays });
+if (!process.env.OPENASY_CERT_WARN_DAYS && process.env.CERTIFICATES_WARN_DAYS) log("warn", "CERTIFICATES_WARN_DAYS is deprecated: rename it OPENASY_CERT_WARN_DAYS and give Uptime the same value");
+const endpoints = endpointsPath
+  ? watchEndpoints(
+      endpointsPath,
+      (list) => {
+        const warnings = certs.syncFile(list);
+        // New endpoints are read now rather than at the next round.
+        if (probeHours > 0) void certs.probeNew().catch((err) => log("warn", "probe of new endpoints failed", { error: String(err) }));
+        return warnings;
+      },
+      {
+        onChange: (s) =>
+          s.error
+            ? log("error", "endpoints file not applied; the endpoints from its last good version stay", { path: s.path, error: s.error })
+            : log(s.warnings.length ? "warn" : "info", "endpoints file applied", { path: s.path, entries: s.entries, warnings: s.warnings }),
+      },
+    )
+  : undefined;
 const products = parseProducts(process.env.OPENASY_PRODUCTS);
 if (products.invalid.length) log("warn", "OPENASY_PRODUCTS: left out entries that are not id=https://address", { entries: products.invalid });
 const server = createServer(
@@ -55,6 +77,7 @@ const server = createServer(
     openapi,
     serveMetrics: metricsPort === undefined,
     products: products.products,
+    endpointsFile: endpoints && (() => endpoints.state),
   }),
 );
 const metricsServer = metricsPort !== undefined ? createServer(createMetricsHandler(certs, version)) : undefined;
@@ -73,7 +96,7 @@ if (setup) log("info", "no owner yet: open this link once to create the owner ac
 certs.purge();
 const timers: NodeJS.Timeout[] = [setInterval(() => auth.purge(), 5 * 60_000), setInterval(() => certs.purge(), 24 * 3_600_000), setInterval(() => certs.checkExpiry(), 3_600_000)];
 if (probeHours > 0) {
-  // Connects only to endpoints an admin added, on public addresses, one after another (ADR 0046).
+  // Connects only to endpoints an admin or the endpoints file added, on public addresses, one after another (ADR 0046).
   const probe = () => certs.probeAll().catch((err) => log("warn", "probe round failed", { error: String(err) }));
   void probe();
   timers.push(setInterval(probe, probeHours * 3_600_000));
@@ -84,6 +107,7 @@ if (probeHours > 0) {
 function shutdown(signal: string) {
   log("info", "shutting down", { signal });
   for (const t of timers) clearInterval(t);
+  endpoints?.stop();
   metricsServer?.close();
   server.close(() => {
     db.close();
