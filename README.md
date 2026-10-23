@@ -83,7 +83,7 @@ are on http://localhost:8080, the API reference at http://localhost:8080/api/doc
 | `CERTIFICATES_RETENTION_DAYS` | `365` | Certificates not seen for this long, and on no endpoint, are deleted |
 | `CERTIFICATES_METRICS_PORT` | | Serve `/metrics` on this port only (ADR 0026) |
 | `CERTIFICATES_HEADLESS` | `false` | `true` serves only the API |
-| `CERTIFICATES_PASSWORD_SIGN_IN`, `CERTIFICATES_OIDC_*` | | Sign-in, as in every OpenAsy product ([@openasy/auth](https://github.com/openasy/auth)) |
+| `CERTIFICATES_PASSWORD_SIGN_IN`, `OPENASY_OIDC_*` | | Sign-in, as in every OpenAsy product ([@openasy/auth](https://github.com/openasy/auth)) |
 
 `/metrics` has `openasy_certificates_total{state}`, `openasy_certificates_expiring{state}`,
 `openasy_certificates_with_warnings` and the endpoints, to alert on in your own Prometheus.

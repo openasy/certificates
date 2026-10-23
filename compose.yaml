@@ -23,9 +23,9 @@ services:
       # For cron jobs, CI and collectors: it can send certificates and nothing else. Or use an API token with the editor role from Settings.
       CERTIFICATES_INGEST_TOKEN: ${CERTIFICATES_INGEST_TOKEN:-}
       # Sign in with your identity provider (OIDC), see the README:
-      # CERTIFICATES_OIDC_ISSUER: https://login.example.com
-      # CERTIFICATES_OIDC_CLIENT_ID: certificates
-      # CERTIFICATES_OIDC_CLIENT_SECRET: ${CERTIFICATES_OIDC_CLIENT_SECRET}
+      # OPENASY_OIDC_ISSUER: https://login.example.com
+      # OPENASY_OIDC_CLIENT_ID: certificates
+      # OPENASY_OIDC_CLIENT_SECRET: ${OPENASY_OIDC_CLIENT_SECRET}
 
 volumes:
   certificates-data:
