@@ -21,11 +21,19 @@ export async function startApp(opts: Partial<AppOptions> & { version: string; pr
   const auth = createAuth({ db, product: "certificates", productName: "OpenAsy Certificates", origin: base });
   const { probe: _probe, warnDays: _warnDays, ...rest } = opts;
   handler = createApp({ db, certs, auth, ingestToken: INGEST_TOKEN, adminToken: ADMIN_TOKEN, ...rest });
-  const as = (token: string) => (path: string, init: RequestInit = {}) => fetch(base + path, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init.headers } });
+  const as =
+    (token: string) =>
+    (path: string, init: RequestInit = {}) =>
+      fetch(base + path, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init.headers } });
   const admin = as(ADMIN_TOKEN);
   const ingest = as(INGEST_TOKEN);
   /** Sends PEM text the way a cron job does. */
-  const send = (pem: string, source?: string) => ingest(`/api/v1/certificates${source ? `?${new URLSearchParams({ source })}` : ""}`, { method: "POST", body: pem, headers: { "content-type": "text/plain" } });
+  const send = (pem: string, source?: string) =>
+    ingest(`/api/v1/certificates${source ? `?${new URLSearchParams({ source })}` : ""}`, {
+      method: "POST",
+      body: pem,
+      headers: { "content-type": "text/plain" },
+    });
   const close = () => new Promise<void>((resolve) => server.close(() => resolve()));
   return { db, certs, auth, base, admin, ingest, send, close };
 }

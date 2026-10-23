@@ -69,7 +69,9 @@ describe("endpoints from the file", () => {
 
   it("refuse a whole file with a bad address", async () => {
     const before = await endpoints();
-    expect(() => app.certs.syncFile([{ ...parseEndpoints("endpoints:\n  - { name: X, url: 'tls://x.example.com' }")[0]!, host: "bad host" }])).toThrow(/X: bad host is not a host name/);
+    expect(() => app.certs.syncFile([{ ...parseEndpoints("endpoints:\n  - { name: X, url: 'tls://x.example.com' }")[0]!, host: "bad host" }])).toThrow(
+      /X: bad host is not a host name/,
+    );
     expect(await endpoints()).toEqual(before);
   });
 });

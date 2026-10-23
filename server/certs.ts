@@ -66,7 +66,8 @@ export function parseLimit(value: string | null, max = 500, fallback = 100): num
 /** "30,14,7,1" as a list of days, largest first. */
 export function parseWarnDays(value: string | undefined): number[] {
   const days = (value ?? "30,14,7,1").split(",").map((d) => Number(d.trim()));
-  if (!days.length || days.some((d) => !Number.isInteger(d) || d < 1 || d > 365)) throw new Error("OPENASY_CERT_WARN_DAYS is a comma-separated list of days, 1 to 365, such as 30,14,7,1");
+  if (!days.length || days.some((d) => !Number.isInteger(d) || d < 1 || d > 365))
+    throw new Error("OPENASY_CERT_WARN_DAYS is a comma-separated list of days, 1 to 365, such as 30,14,7,1");
   return [...new Set(days)].sort((a, b) => b - a);
 }
 
@@ -121,7 +122,13 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
   const daysLeft = (row: Pick<CertRow, "not_after">, at = Date.now()) => Math.floor((Date.parse(row.not_after) - at) / DAY);
 
   const sourcesOf = (id: string) =>
-    (db.prepare("SELECT source, position, last_seen FROM sources WHERE cert_id = ? ORDER BY last_seen DESC, source").all(id) as Array<{ source: string; position: number; last_seen: string }>).map((s) => ({
+    (
+      db.prepare("SELECT source, position, last_seen FROM sources WHERE cert_id = ? ORDER BY last_seen DESC, source").all(id) as Array<{
+        source: string;
+        position: number;
+        last_seen: string;
+      }>
+    ).map((s) => ({
       source: s.source,
       position: s.position,
       lastSeen: s.last_seen,
@@ -164,7 +171,9 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
     let current = new X509Certificate(r.pem);
     let issuerName = r.issuer;
     for (let depth = 0; depth < 8; depth++) {
-      const candidates = db.prepare("SELECT * FROM certificates WHERE subject = ? AND id <> ?").all(issuerName, new X509Certificate(r.pem).fingerprint256.replace(/:/g, "").toLowerCase()) as unknown as CertRow[];
+      const candidates = db
+        .prepare("SELECT * FROM certificates WHERE subject = ? AND id <> ?")
+        .all(issuerName, new X509Certificate(r.pem).fingerprint256.replace(/:/g, "").toLowerCase()) as unknown as CertRow[];
       const next = candidates.find((c) => {
         try {
           return !out.some((o) => o.id === c.id) && current.checkIssued(new X509Certificate(c.pem));
@@ -187,8 +196,29 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
       `INSERT INTO certificates (id, subject, subject_cn, sans, issuer, issuer_cn, serial, not_before, not_after, key_type, key_bits, signature, is_ca, self_signed, warnings, pem, first_seen, last_seen)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET last_seen = excluded.last_seen`,
-    ).run(p.id, p.subject, p.subjectCn, JSON.stringify(p.sans), p.issuer, p.issuerCn, p.serial, p.notBefore, p.notAfter, p.keyType, p.keyBits, p.signature, p.isCa ? 1 : 0, p.selfSigned ? 1 : 0, JSON.stringify(p.warnings), p.pem, at, at);
-    db.prepare("INSERT INTO sources (cert_id, source, position, last_seen) VALUES (?, ?, ?, ?) ON CONFLICT (cert_id, source) DO UPDATE SET position = excluded.position, last_seen = excluded.last_seen").run(p.id, source, position, at);
+    ).run(
+      p.id,
+      p.subject,
+      p.subjectCn,
+      JSON.stringify(p.sans),
+      p.issuer,
+      p.issuerCn,
+      p.serial,
+      p.notBefore,
+      p.notAfter,
+      p.keyType,
+      p.keyBits,
+      p.signature,
+      p.isCa ? 1 : 0,
+      p.selfSigned ? 1 : 0,
+      JSON.stringify(p.warnings),
+      p.pem,
+      at,
+      at,
+    );
+    db.prepare(
+      "INSERT INTO sources (cert_id, source, position, last_seen) VALUES (?, ?, ?, ?) ON CONFLICT (cert_id, source) DO UPDATE SET position = excluded.position, last_seen = excluded.last_seen",
+    ).run(p.id, source, position, at);
     return !known;
   }
 
@@ -239,18 +269,23 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
     if (filter.state === "expired") (where.push("not_after < ?"), args.push(at));
     else if (filter.state === "not-yet-valid") (where.push("not_after >= ? AND not_before > ?"), args.push(at, at));
     else if (filter.state === "critical") (where.push("not_after >= ? AND not_before <= ? AND not_after < ?"), args.push(at, at, iso(criticalDays)));
-    else if (filter.state === "expiring") (where.push("not_before <= ? AND not_after >= ? AND not_after < ?"), args.push(at, iso(criticalDays), iso(expiringDays)));
+    else if (filter.state === "expiring")
+      (where.push("not_before <= ? AND not_after >= ? AND not_after < ?"), args.push(at, iso(criticalDays), iso(expiringDays)));
     else if (filter.state === "valid") (where.push("not_before <= ? AND not_after >= ?"), args.push(at, iso(expiringDays)));
     if (filter.warning) (where.push("warnings LIKE ?"), args.push(`%"${filter.warning}"%`));
     if (filter.ca !== undefined) (where.push("is_ca = ?"), args.push(filter.ca ? 1 : 0));
     if (filter.q) {
       const like = `%${filter.q.replace(/[\\%_]/g, "\\$&")}%`;
-      where.push("(subject LIKE ? ESCAPE '\\' OR sans LIKE ? ESCAPE '\\' OR issuer LIKE ? ESCAPE '\\' OR id LIKE ? ESCAPE '\\' OR id IN (SELECT cert_id FROM sources WHERE source LIKE ? ESCAPE '\\'))");
+      where.push(
+        "(subject LIKE ? ESCAPE '\\' OR sans LIKE ? ESCAPE '\\' OR issuer LIKE ? ESCAPE '\\' OR id LIKE ? ESCAPE '\\' OR id IN (SELECT cert_id FROM sources WHERE source LIKE ? ESCAPE '\\'))",
+      );
       args.push(like, like, like, like, like);
     }
     const offset = decodeCursor(cursor);
     const order = filter.sort === "name" ? "COALESCE(subject_cn, subject) COLLATE NOCASE, not_after" : "not_after, id";
-    const rows = db.prepare(`SELECT * FROM certificates ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...args, limit + 1, offset) as unknown as CertRow[];
+    const rows = db
+      .prepare(`SELECT * FROM certificates ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order} LIMIT ? OFFSET ?`)
+      .all(...args, limit + 1, offset) as unknown as CertRow[];
     return { items: rows.slice(0, limit).map(present), ...(rows.length > limit && { nextCursor: encodeCursor(offset + limit) }) } satisfies Page<unknown>;
   }
 
@@ -284,7 +319,13 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
       const parsed = chain.map((der) => parsePem(`-----BEGIN CERTIFICATE-----\n${der.toString("base64")}\n-----END CERTIFICATE-----`)[0]!);
       if (!parsed.length) throw new Error(`${e.host}:${e.port} sent no certificate.`);
       ingestParsed(parsed, `${e.host}:${e.port}`);
-      db.prepare("UPDATE endpoints SET last_probe_at = ?, last_error = NULL, chain_valid = ?, chain_error = ?, cert_id = ? WHERE id = ?").run(now(), authorized ? 1 : 0, error, parsed[0]!.id, id);
+      db.prepare("UPDATE endpoints SET last_probe_at = ?, last_error = NULL, chain_valid = ?, chain_error = ?, cert_id = ? WHERE id = ?").run(
+        now(),
+        authorized ? 1 : 0,
+        error,
+        parsed[0]!.id,
+        id,
+      );
     } catch (err) {
       db.prepare("UPDATE endpoints SET last_probe_at = ?, last_error = ? WHERE id = ?").run(now(), (err as Error).message.slice(0, 500), id);
     }
@@ -294,7 +335,8 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
   const countStates = () => {
     const out = Object.fromEntries(STATES.map((s) => [s, 0])) as Record<State, number>;
     const at = Date.now();
-    for (const r of db.prepare("SELECT not_before, not_after FROM certificates").all() as Array<Pick<CertRow, "not_before" | "not_after">>) out[stateOf(r, at)]++;
+    for (const r of db.prepare("SELECT not_before, not_after FROM certificates").all() as Array<Pick<CertRow, "not_before" | "not_after">>)
+      out[stateOf(r, at)]++;
     return out;
   };
 
@@ -319,7 +361,19 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
 
     certificate(id: string) {
       const r = row(id);
-      return { ...present(r), pem: r.pem, chain: chainOf(r).map((c) => ({ id: c.id, commonName: c.subject_cn, subject: c.subject, notAfter: c.not_after, state: stateOf(c), ca: c.is_ca === 1, selfSigned: c.self_signed === 1 })) };
+      return {
+        ...present(r),
+        pem: r.pem,
+        chain: chainOf(r).map((c) => ({
+          id: c.id,
+          commonName: c.subject_cn,
+          subject: c.subject,
+          notAfter: c.not_after,
+          state: stateOf(c),
+          ca: c.is_ca === 1,
+          selfSigned: c.self_signed === 1,
+        })),
+      };
     },
 
     deleteCertificate(id: string) {
@@ -329,7 +383,11 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
     /** Certificates that crossed a threshold since a time, tightest crossings first. */
     expiring(since: string, limit: number) {
       checkExpiry();
-      const rows = db.prepare("SELECT m.threshold, m.crossed_at, c.* FROM expiry_marks m JOIN certificates c ON c.id = m.cert_id WHERE m.crossed_at >= ? ORDER BY m.threshold, c.not_after LIMIT ?").all(since, limit) as unknown as Array<CertRow & { threshold: number; crossed_at: string }>;
+      const rows = db
+        .prepare(
+          "SELECT m.threshold, m.crossed_at, c.* FROM expiry_marks m JOIN certificates c ON c.id = m.cert_id WHERE m.crossed_at >= ? ORDER BY m.threshold, c.not_after LIMIT ?",
+        )
+        .all(since, limit) as unknown as Array<CertRow & { threshold: number; crossed_at: string }>;
       return rows.map((r) => ({ threshold: r.threshold, crossedAt: r.crossed_at, certificate: present(r) }));
     },
     checkExpiry,
@@ -353,7 +411,8 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
     listEndpoints: () => (db.prepare("SELECT * FROM endpoints ORDER BY host, port").all() as Array<Record<string, any>>).map(presentEndpoint),
     endpoint: (id: string) => presentEndpoint(endpointRow(id)),
     deleteEndpoint(id: string) {
-      if (endpointRow(id).source === "file") throw new CertsError(409, "conflict", "This endpoint comes from the endpoints file (OPENASY_ENDPOINTS). Remove it there.");
+      if (endpointRow(id).source === "file")
+        throw new CertsError(409, "conflict", "This endpoint comes from the endpoints file (OPENASY_ENDPOINTS). Remove it there.");
       db.prepare("DELETE FROM endpoints WHERE id = ?").run(id);
     },
 
@@ -373,7 +432,8 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
         for (const e of wanted) {
           const id = fileId(e.name);
           const host = e.host.toLowerCase();
-          const same = db.prepare("SELECT id, source FROM endpoints WHERE host = ? AND port = ?").get(host, e.port) as { id: string; source: string } | undefined;
+          const same = db.prepare("SELECT id, source FROM endpoints WHERE host = ? AND port = ?").get(host, e.port) as
+            { id: string; source: string } | undefined;
           if (same && same.id !== id) {
             // Two entries for one address, such as https:// and tls://, are one endpoint.
             if (same.source === "ui") warnings.push(`${e.name}: ${host}:${e.port} was added in Certificates; remove it there to let the file manage it.`);
@@ -382,10 +442,19 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
           kept.push(id);
           const current = db.prepare("SELECT host, port FROM endpoints WHERE id = ?").get(id) as { host: string; port: number } | undefined;
           if (!current) {
-            db.prepare("INSERT INTO endpoints (id, host, port, created_at, source, name, server) VALUES (?, ?, ?, ?, 'file', ?, ?)").run(id, host, e.port, now(), e.name, e.server);
+            db.prepare("INSERT INTO endpoints (id, host, port, created_at, source, name, server) VALUES (?, ?, ?, ?, 'file', ?, ?)").run(
+              id,
+              host,
+              e.port,
+              now(),
+              e.name,
+              e.server,
+            );
           } else if (current.host !== host || current.port !== e.port) {
             // Another address is another endpoint: what was probed at the old one is not its.
-            db.prepare("UPDATE endpoints SET host = ?, port = ?, name = ?, server = ?, last_probe_at = NULL, last_error = NULL, chain_valid = NULL, chain_error = NULL, cert_id = NULL WHERE id = ?").run(host, e.port, e.name, e.server, id);
+            db.prepare(
+              "UPDATE endpoints SET host = ?, port = ?, name = ?, server = ?, last_probe_at = NULL, last_error = NULL, chain_valid = NULL, chain_error = NULL, cert_id = NULL WHERE id = ?",
+            ).run(host, e.port, e.name, e.server, id);
           } else {
             db.prepare("UPDATE endpoints SET name = ?, server = ? WHERE id = ?").run(e.name, e.server, id);
           }
@@ -402,7 +471,8 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
 
     /** Endpoints never probed yet, such as the ones a file just added, so they do not wait for the next round. */
     async probeNew() {
-      for (const e of db.prepare("SELECT id FROM endpoints WHERE last_probe_at IS NULL ORDER BY created_at").all() as Array<{ id: string }>) await probeEndpoint(e.id);
+      for (const e of db.prepare("SELECT id FROM endpoints WHERE last_probe_at IS NULL ORDER BY created_at").all() as Array<{ id: string }>)
+        await probeEndpoint(e.id);
     },
     probeEndpoint,
     /** Every endpoint, one after another: a probe is a connection to someone else's server. */
@@ -417,7 +487,15 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
       const endpoints = (db.prepare("SELECT COUNT(*) AS n FROM endpoints").get() as { n: number }).n;
       const failing = (db.prepare("SELECT COUNT(*) AS n FROM endpoints WHERE last_error IS NOT NULL").get() as { n: number }).n;
       const next = db.prepare("SELECT * FROM certificates WHERE not_after >= ? ORDER BY not_after LIMIT 1").get(now()) as CertRow | undefined;
-      return { certificates, states, withWarnings, endpoints, failingEndpoints: failing, warnDays, nextExpiry: next ? { id: next.id, commonName: next.subject_cn, notAfter: next.not_after, daysLeft: daysLeft(next) } : null };
+      return {
+        certificates,
+        states,
+        withWarnings,
+        endpoints,
+        failingEndpoints: failing,
+        warnDays,
+        nextExpiry: next ? { id: next.id, commonName: next.subject_cn, notAfter: next.not_after, daysLeft: daysLeft(next) } : null,
+      };
     },
 
     countStates,

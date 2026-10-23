@@ -10,7 +10,8 @@ const tlv = (tag: number, ...parts: Buffer[]) => {
 const seq = (...p: Buffer[]) => tlv(0x30, ...p);
 const set = (...p: Buffer[]) => tlv(0x31, ...p);
 const int = (n: number | Buffer) => {
-  const b = typeof n === "number" ? Buffer.from(n.toString(16).padStart(n.toString(16).length % 2 ? n.toString(16).length + 1 : n.toString(16).length, "0"), "hex") : n;
+  const b =
+    typeof n === "number" ? Buffer.from(n.toString(16).padStart(n.toString(16).length % 2 ? n.toString(16).length + 1 : n.toString(16).length, "0"), "hex") : n;
   return tlv(0x02, b[0]! & 0x80 ? Buffer.concat([Buffer.from([0]), b]) : b);
 };
 const oid = (dotted: string) => {
@@ -88,10 +89,7 @@ export function makeCert(o: CertOptions) {
   const signerType = signer.asymmetricKeyType as "rsa" | "ec" | "ed25519";
   const hash = o.hash ?? "sha256";
   const algorithm = ALGORITHMS[signerType][hash];
-  const general = [
-    ...(o.sans ?? []).map((s) => tlv(0x82, Buffer.from(s))),
-    ...(o.ips ?? []).map((ip) => tlv(0x87, Buffer.from(ip.split(".").map(Number)))),
-  ];
+  const general = [...(o.sans ?? []).map((s) => tlv(0x82, Buffer.from(s))), ...(o.ips ?? []).map((ip) => tlv(0x87, Buffer.from(ip.split(".").map(Number))))];
   const extensions = [
     seq(oid("2.5.29.19"), bool(true), octets(seq(...(o.ca ? [bool(true)] : [])))),
     ...(general.length ? [seq(oid("2.5.29.17"), octets(seq(...general)))] : []),
@@ -108,7 +106,10 @@ export function makeCert(o: CertOptions) {
   );
   const signature = signerType === "ed25519" ? sign(null, tbs, signer) : sign(hash, tbs, signer);
   const der = seq(tbs, algorithm, bits(signature));
-  const pem = `-----BEGIN CERTIFICATE-----\n${der.toString("base64").replace(/(.{64})/g, "$1\n").trim()}\n-----END CERTIFICATE-----\n`;
+  const pem = `-----BEGIN CERTIFICATE-----\n${der
+    .toString("base64")
+    .replace(/(.{64})/g, "$1\n")
+    .trim()}\n-----END CERTIFICATE-----\n`;
   void type;
   return { pem, der, ...pair };
 }

@@ -4,9 +4,25 @@ import { inDays, keys, makeCert, privateKeyPem } from "./testcert.ts";
 
 describe("parseCertificate", () => {
   it("reads names, dates, key and signature", () => {
-    const c = makeCert({ cn: "shop.example.com", sans: ["shop.example.com", "www.shop.example.com"], ips: ["203.0.113.7"], notBefore: inDays(-10), notAfter: inDays(80), serial: 4096 });
+    const c = makeCert({
+      cn: "shop.example.com",
+      sans: ["shop.example.com", "www.shop.example.com"],
+      ips: ["203.0.113.7"],
+      notBefore: inDays(-10),
+      notAfter: inDays(80),
+      serial: 4096,
+    });
     const p = parseCertificate(c.pem);
-    expect(p).toMatchObject({ subjectCn: "shop.example.com", issuerCn: "shop.example.com", keyType: "rsa", keyBits: 2048, signature: "sha256WithRSAEncryption", isCa: false, selfSigned: true, serial: "1000" });
+    expect(p).toMatchObject({
+      subjectCn: "shop.example.com",
+      issuerCn: "shop.example.com",
+      keyType: "rsa",
+      keyBits: 2048,
+      signature: "sha256WithRSAEncryption",
+      isCa: false,
+      selfSigned: true,
+      serial: "1000",
+    });
     expect(p.sans).toEqual(["DNS:shop.example.com", "DNS:www.shop.example.com", "IP:203.0.113.7"]);
     expect(p.id).toMatch(/^[0-9a-f]{64}$/);
     expect(Date.parse(p.notAfter) - Date.parse(p.notBefore)).toBeCloseTo(90 * 86_400_000, -4);
@@ -14,7 +30,11 @@ describe("parseCertificate", () => {
   });
 
   it("knows other key and signature kinds", () => {
-    expect(parseCertificate(makeCert({ cn: "ec.example.com", keyKind: "ec" }).pem)).toMatchObject({ keyType: "ec", keyBits: 256, signature: "ecdsa-with-SHA256" });
+    expect(parseCertificate(makeCert({ cn: "ec.example.com", keyKind: "ec" }).pem)).toMatchObject({
+      keyType: "ec",
+      keyBits: 256,
+      signature: "ecdsa-with-SHA256",
+    });
     expect(parseCertificate(makeCert({ cn: "ed.example.com", keyKind: "ed25519" }).pem)).toMatchObject({ keyType: "ed25519", signature: "Ed25519" });
     expect(parseCertificate(makeCert({ cn: "old.example.com", hash: "sha1" }).pem).signature).toBe("sha1WithRSAEncryption");
     expect(signatureAlgorithm(makeCert({ cn: "x" }).der)).toBe("sha256WithRSAEncryption");

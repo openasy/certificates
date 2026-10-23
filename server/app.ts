@@ -72,7 +72,8 @@ function send(res: ServerResponse, status: number, body: string | Buffer, type =
   res.end(body);
 }
 
-const json = (res: ServerResponse, status: number, data: unknown, headers?: Record<string, string>) => send(res, status, JSON.stringify(data), "application/json", headers);
+const json = (res: ServerResponse, status: number, data: unknown, headers?: Record<string, string>) =>
+  send(res, status, JSON.stringify(data), "application/json", headers);
 
 const TITLES: Record<ProblemCode, string> = {
   "invalid-token": "Invalid token",
@@ -127,7 +128,8 @@ async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
 
 async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
   const raw = await readBody(req, limit).catch((err: unknown) => {
-    if (err instanceof CertsError && err.code === "payload-too-large") throw new CertsError(400, "invalid-json", `The body must be JSON, at most ${Math.round(limit / 1024)} KiB.`);
+    if (err instanceof CertsError && err.code === "payload-too-large")
+      throw new CertsError(400, "invalid-json", `The body must be JSON, at most ${Math.round(limit / 1024)} KiB.`);
     throw err;
   });
   try {
@@ -176,7 +178,8 @@ function certFilter(url: URL): CertFilter {
   const state = url.searchParams.get("state") ?? undefined;
   if (state !== undefined && !STATES.includes(state as State)) throw new CertsError(422, "invalid-body", `state is one of ${STATES.join(", ")}.`);
   const warning = url.searchParams.get("warning") ?? undefined;
-  if (warning !== undefined && !(WARNINGS as readonly string[]).includes(warning)) throw new CertsError(422, "invalid-body", `warning is one of ${WARNINGS.join(", ")}.`);
+  if (warning !== undefined && !(WARNINGS as readonly string[]).includes(warning))
+    throw new CertsError(422, "invalid-body", `warning is one of ${WARNINGS.join(", ")}.`);
   const sort = url.searchParams.get("sort") ?? "expiry";
   if (sort !== "expiry" && sort !== "name") throw new CertsError(422, "invalid-body", "sort is expiry or name.");
   const q = url.searchParams.get("q")?.trim();
@@ -184,7 +187,20 @@ function certFilter(url: URL): CertFilter {
   return { state: state as State | undefined, warning, q: q || undefined, ca: bool(url, "ca"), sort };
 }
 
-export function createApp({ db, certs, version, auth, adminToken, ingestToken, webDir, docsDir, openapi, serveMetrics = true, products = [], endpointsFile }: AppOptions) {
+export function createApp({
+  db,
+  certs,
+  version,
+  auth,
+  adminToken,
+  ingestToken,
+  webDir,
+  docsDir,
+  openapi,
+  serveMetrics = true,
+  products = [],
+  endpointsFile,
+}: AppOptions) {
   // The served description includes /api/v1/auth from @openasy/auth, so the API reference documents sign-in too.
   const spec = openapi && JSON.stringify({ ...mergeOpenApi(openapi), info: { ...(openapi.info as object), version } });
   const noContent = (res: ServerResponse) => {
@@ -192,7 +208,8 @@ export function createApp({ db, certs, version, auth, adminToken, ingestToken, w
   };
   const cursor = (url: URL) => url.searchParams.get("cursor") ?? undefined;
   const limit = (url: URL) => parseLimit(url.searchParams.get("limit"));
-  const page = <K extends string, T>(key: K, p: { items: T[]; nextCursor?: string }) => ({ [key]: p.items, ...(p.nextCursor && { nextCursor: p.nextCursor }) }) as Record<K, T[]> & { nextCursor?: string };
+  const page = <K extends string, T>(key: K, p: { items: T[]; nextCursor?: string }) =>
+    ({ [key]: p.items, ...(p.nextCursor && { nextCursor: p.nextCursor }) }) as Record<K, T[]> & { nextCursor?: string };
 
   const routes: Route[] = [
     { method: "GET", path: "/api/v1/version", auth: "none", handle: () => ({ product: "certificates", version }) },
@@ -216,7 +233,8 @@ export function createApp({ db, certs, version, auth, adminToken, ingestToken, w
             throw new CertsError(400, "invalid-json", "The body must be PEM text or a JSON object.");
           }
           const b = body as { pem?: unknown; source?: unknown };
-          if (typeof b?.pem !== "string" || (b.source !== undefined && typeof b.source !== "string")) throw new CertsError(422, "invalid-body", "Expected { pem, source? }.");
+          if (typeof b?.pem !== "string" || (b.source !== undefined && typeof b.source !== "string"))
+            throw new CertsError(422, "invalid-body", "Expected { pem, source? }.");
           text = b.pem;
           source = (b.source as string | undefined) ?? source;
         }
@@ -224,7 +242,12 @@ export function createApp({ db, certs, version, auth, adminToken, ingestToken, w
         json(res, 201, result);
       },
     },
-    { method: "GET", path: "/api/v1/certificates", auth: "viewer", handle: ({ url }) => page("certificates", certs.list(certFilter(url), cursor(url), limit(url))) },
+    {
+      method: "GET",
+      path: "/api/v1/certificates",
+      auth: "viewer",
+      handle: ({ url }) => page("certificates", certs.list(certFilter(url), cursor(url), limit(url))),
+    },
     { method: "GET", path: "/api/v1/certificates/:id", auth: "viewer", handle: ({ params }) => certs.certificate(params[0]!) },
     { method: "DELETE", path: "/api/v1/certificates/:id", auth: "admin", handle: ({ res, params }) => (certs.deleteCertificate(params[0]!), noContent(res)) },
     {
@@ -254,8 +277,10 @@ export function createApp({ db, certs, version, auth, adminToken, ingestToken, w
     if (tokenMatches(req.headers.authorization, adminToken)) return "admin token";
     if (access === "ingest") {
       // An API token or a session with the editor role can send certificates too, for scripts set up from Settings.
-      if (!ingestToken && !req.headers.authorization?.startsWith("Bearer oa_")) throw new CertsError(503, "not-configured", "Set CERTIFICATES_INGEST_TOKEN on certificates, or send an API token with the editor role.");
-      if (!req.headers.authorization?.startsWith("Bearer oa_")) throw new CertsError(401, "invalid-token", "Send CERTIFICATES_INGEST_TOKEN or an API token as a bearer token.");
+      if (!ingestToken && !req.headers.authorization?.startsWith("Bearer oa_"))
+        throw new CertsError(503, "not-configured", "Set CERTIFICATES_INGEST_TOKEN on certificates, or send an API token with the editor role.");
+      if (!req.headers.authorization?.startsWith("Bearer oa_"))
+        throw new CertsError(401, "invalid-token", "Send CERTIFICATES_INGEST_TOKEN or an API token as a bearer token.");
     }
     const p = auth.authorize(req, access === "ingest" ? "editor" : access);
     return p.kind === "session" ? p.user.name : `API token ${p.name}`;

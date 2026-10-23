@@ -8,7 +8,17 @@ export function isPrivate(address: string): boolean {
   if (a.startsWith("::ffff:")) return isPrivate(a.slice(7));
   if (isIP(a) === 4) {
     const [p, q] = a.split(".").map(Number) as [number, number];
-    return p === 0 || p === 10 || p === 127 || (p === 100 && q >= 64 && q <= 127) || (p === 169 && q === 254) || (p === 172 && q >= 16 && q <= 31) || (p === 192 && q === 168) || (p === 192 && q === 0) || p >= 224;
+    return (
+      p === 0 ||
+      p === 10 ||
+      p === 127 ||
+      (p === 100 && q >= 64 && q <= 127) ||
+      (p === 169 && q === 254) ||
+      (p === 172 && q >= 16 && q <= 31) ||
+      (p === 192 && q === 168) ||
+      (p === 192 && q === 0) ||
+      p >= 224
+    );
   }
   return a === "::" || a === "::1" || a.startsWith("fc") || a.startsWith("fd") || /^fe[89ab]/.test(a);
 }
@@ -39,7 +49,10 @@ const system = async (host: string) => (await lookup(host, { all: true })).map((
 export async function resolvePublic(host: string, { resolve = system, allowPrivate = false }: ProbeOptions = {}): Promise<string> {
   const addresses = isIP(host) ? [host] : await resolve(host).catch(() => []);
   if (!addresses.length) throw new Error(`${host} does not resolve.`);
-  if (!allowPrivate && addresses.some(isPrivate)) throw new Error(`${host} is on a private address. Certificates on private networks are reported by a collector in that network; the server itself only connects to public addresses.`);
+  if (!allowPrivate && addresses.some(isPrivate))
+    throw new Error(
+      `${host} is on a private address. Certificates on private networks are reported by a collector in that network; the server itself only connects to public addresses.`,
+    );
   return addresses[0]!;
 }
 

@@ -57,7 +57,18 @@
     "publicOnlyAPrivateKey": "Public only. A private key is never accepted.",
     "deleteThisCertificate": "Delete this certificate?",
     "itLeavesTheInventoryWith": "It leaves the inventory with where it was seen. It comes back if it is sent or probed again.",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "subject": "Subject",
+    "issuer": "Issuer",
+    "validFrom": "Valid from",
+    "validUntil": "Valid until",
+    "key": "Key",
+    "signature": "Signature",
+    "serial": "Serial",
+    "kind": "Kind",
+    "certificateAuthority": "Certificate authority",
+    "leafSelfSigned": "Leaf, self-signed",
+    "leaf": "Leaf"
   },
   "endpointsPage": {
     "endpoint": "Endpoint",

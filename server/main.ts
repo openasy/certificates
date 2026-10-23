@@ -45,7 +45,8 @@ const auth = createAuth({
   onEvent: (event) => log(event.type === "sign-in-failed" ? "warn" : "info", "auth", { event }),
 });
 const certs = createCerts(db, { retentionDays, warnDays });
-if (!process.env.OPENASY_CERT_WARN_DAYS && process.env.CERTIFICATES_WARN_DAYS) log("warn", "CERTIFICATES_WARN_DAYS is deprecated: rename it OPENASY_CERT_WARN_DAYS and give Uptime the same value");
+if (!process.env.OPENASY_CERT_WARN_DAYS && process.env.CERTIFICATES_WARN_DAYS)
+  log("warn", "CERTIFICATES_WARN_DAYS is deprecated: rename it OPENASY_CERT_WARN_DAYS and give Uptime the same value");
 const endpoints = endpointsPath
   ? watchEndpoints(
       endpointsPath,
@@ -84,17 +85,25 @@ const metricsServer = metricsPort !== undefined ? createServer(createMetricsHand
 metricsServer?.listen(metricsPort, () => log("info", "metrics on their own port", { port: metricsPort }));
 
 server.listen(port, () => log("info", "certificates started", { version, port, db: dbPath, headless, retentionDays, warnDays, probeHours }));
-if (!process.env.CERTIFICATES_INGEST_TOKEN) log("warn", "CERTIFICATES_INGEST_TOKEN is not set; a collector needs an API token with the editor role (Settings, API tokens) to send certificates");
+if (!process.env.CERTIFICATES_INGEST_TOKEN)
+  log("warn", "CERTIFICATES_INGEST_TOKEN is not set; a collector needs an API token with the editor role (Settings, API tokens) to send certificates");
 if (!publicUrl.startsWith("https://") && !/^http:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(publicUrl)) {
-  log("warn", "CERTIFICATES_PUBLIC_URL is not https: browsers will not keep secure cookies or allow passkeys. Put certificates behind TLS (ADR 0026)", { url: publicUrl });
+  log("warn", "CERTIFICATES_PUBLIC_URL is not https: browsers will not keep secure cookies or allow passkeys. Put certificates behind TLS (ADR 0026)", {
+    url: publicUrl,
+  });
 }
-if (auth.secretsInClear) log("warn", "no secrets key: TOTP secrets are stored unencrypted. Mount a 32-byte key (openssl rand -hex 32)", { file: secretsKeyFile });
+if (auth.secretsInClear)
+  log("warn", "no secrets key: TOTP secrets are stored unencrypted. Mount a 32-byte key (openssl rand -hex 32)", { file: secretsKeyFile });
 const setup = auth.setupLink();
 // No default password (ADR 0013): the first person to open this link becomes the owner.
 if (setup) log("info", "no owner yet: open this link once to create the owner account", { url: setup });
 
 certs.purge();
-const timers: NodeJS.Timeout[] = [setInterval(() => auth.purge(), 5 * 60_000), setInterval(() => certs.purge(), 24 * 3_600_000), setInterval(() => certs.checkExpiry(), 3_600_000)];
+const timers: NodeJS.Timeout[] = [
+  setInterval(() => auth.purge(), 5 * 60_000),
+  setInterval(() => certs.purge(), 24 * 3_600_000),
+  setInterval(() => certs.checkExpiry(), 3_600_000),
+];
 if (probeHours > 0) {
   // Connects only to endpoints an admin or the endpoints file added, on public addresses, one after another (ADR 0046).
   const probe = () => certs.probeAll().catch((err) => log("warn", "probe round failed", { error: String(err) }));

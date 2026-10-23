@@ -79,12 +79,18 @@ export function signatureAlgorithm(der: Buffer): string {
   return SIGNATURES[dotted] ?? dotted;
 }
 
-const field = (dn: string, key: string) => dn.split("\n").find((l) => l.startsWith(`${key}=`))?.slice(key.length + 1) ?? null;
+const field = (dn: string, key: string) =>
+  dn
+    .split("\n")
+    .find((l) => l.startsWith(`${key}=`))
+    ?.slice(key.length + 1) ?? null;
 
 /** DNS:a.example.com, IP Address:10.0.0.1 and the like, without the quoting node adds to odd values. */
 function names(san: string | undefined): string[] {
   if (!san) return [];
-  return [...san.matchAll(/(DNS|IP Address|email|URI):("(?:[^"\\]|\\.)*"|[^,]+)/g)].map((m) => `${m[1] === "IP Address" ? "IP" : m[1]}:${m[2]!.replace(/^"|"$/g, "").trim()}`);
+  return [...san.matchAll(/(DNS|IP Address|email|URI):("(?:[^"\\]|\\.)*"|[^,]+)/g)].map(
+    (m) => `${m[1] === "IP Address" ? "IP" : m[1]}:${m[2]!.replace(/^"|"$/g, "").trim()}`,
+  );
 }
 
 const DAY = 86_400_000;
@@ -100,7 +106,8 @@ export function parseCertificate(pem: string): Parsed {
   const key = x.publicKey;
   const details = key.asymmetricKeyDetails ?? {};
   const keyType = key.asymmetricKeyType ?? "unknown";
-  const keyBits = typeof details.modulusLength === "number" ? details.modulusLength : keyType === "ec" ? curveBits(details.namedCurve) : keyType === "ed25519" ? 256 : null;
+  const keyBits =
+    typeof details.modulusLength === "number" ? details.modulusLength : keyType === "ec" ? curveBits(details.namedCurve) : keyType === "ed25519" ? 256 : null;
   const signature = signatureAlgorithm(x.raw);
   let selfSigned = false;
   if (x.subject === x.issuer) {

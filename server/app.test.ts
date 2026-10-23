@@ -49,10 +49,17 @@ describe("sending certificates", () => {
 
   it("takes JSON with a source, gzip, and a chain with the position of each", async () => {
     const leaf = makeCert({ cn: "api.example.com", sans: ["api.example.com"], notAfter: inDays(60), ...signed });
-    const res = await app.ingest("/api/v1/certificates", { method: "POST", body: gzipSync(JSON.stringify({ pem: `${leaf.pem}\n${ca.pem}`, source: "lb-1:443" })), headers: { "content-encoding": "gzip" } });
+    const res = await app.ingest("/api/v1/certificates", {
+      method: "POST",
+      body: gzipSync(JSON.stringify({ pem: `${leaf.pem}\n${ca.pem}`, source: "lb-1:443" })),
+      headers: { "content-encoding": "gzip" },
+    });
     const body = await json(res);
     expect(body.added).toBe(2);
-    expect(body.certificates.map((c: any) => [c.commonName, c.sources[0].position, c.ca])).toEqual([["api.example.com", 0, false], ["Example Root CA", 1, true]]);
+    expect(body.certificates.map((c: any) => [c.commonName, c.sources[0].position, c.ca])).toEqual([
+      ["api.example.com", 0, false],
+      ["Example Root CA", 1, true],
+    ]);
     const detail = await json(await app.admin(`/api/v1/certificates/${body.certificates[0].id}`));
     expect(detail.pem).toContain("BEGIN CERTIFICATE");
     expect(detail.chain.map((c: any) => c.commonName)).toEqual(["Example Root CA"]);
@@ -90,14 +97,27 @@ describe("sending certificates", () => {
 describe("states and warnings", () => {
   it("tells valid, expiring, critical, expired and not yet valid apart", async () => {
     const make = (cn: string, from: number, to: number, extra = {}) => makeCert({ cn, notBefore: inDays(from), notAfter: inDays(to), ...signed, ...extra }).pem;
-    await app.send([make("expired.example.com", -100, -2), make("early.example.com", 5, 95), make("critical.example.com", -80, 3), make("expiring.example.com", -70, 20)].join("\n"), "scan");
+    await app.send(
+      [
+        make("expired.example.com", -100, -2),
+        make("early.example.com", 5, 95),
+        make("critical.example.com", -80, 3),
+        make("expiring.example.com", -70, 20),
+      ].join("\n"),
+      "scan",
+    );
     const state = async (cn: string) => (await json(await app.admin(`/api/v1/certificates?q=${cn}`))).certificates[0].state;
     expect(await state("expired.example.com")).toBe("expired");
     expect(await state("early.example.com")).toBe("not-yet-valid");
     expect(await state("critical.example.com")).toBe("critical");
     expect(await state("expiring.example.com")).toBe("expiring");
     expect(await state("shop.example.com")).toBe("valid");
-    for (const [s, cn] of [["expired", "expired.example.com"], ["not-yet-valid", "early.example.com"], ["critical", "critical.example.com"], ["expiring", "expiring.example.com"]] as const) {
+    for (const [s, cn] of [
+      ["expired", "expired.example.com"],
+      ["not-yet-valid", "early.example.com"],
+      ["critical", "critical.example.com"],
+      ["expiring", "expiring.example.com"],
+    ] as const) {
       expect(await names(`?state=${s}`), s).toEqual([cn]);
     }
     expect(await names("?state=valid")).toEqual(expect.arrayContaining(["shop.example.com", "api.example.com"]));
@@ -146,7 +166,8 @@ describe("states and warnings", () => {
     const page = await json(await app.admin("/api/v1/certificates?limit=2"));
     expect(page.certificates).toHaveLength(2);
     expect((await json(await app.admin(`/api/v1/certificates?limit=2&cursor=${page.nextCursor}`))).certificates.length).toBeGreaterThan(0);
-    for (const q of ["state=old", "warning=big", "sort=size", "ca=maybe", "limit=0", "cursor=junk"]) expect((await app.admin(`/api/v1/certificates?${q}`)).status, q).toBe(422);
+    for (const q of ["state=old", "warning=big", "sort=size", "ca=maybe", "limit=0", "cursor=junk"])
+      expect((await app.admin(`/api/v1/certificates?${q}`)).status, q).toBe(422);
   });
 });
 
@@ -195,7 +216,13 @@ describe("endpoints", () => {
       expect(res.status, host).toBe(422);
       expect((await json(res)).detail, host).toMatch(/private address|does not resolve/);
     }
-    for (const body of [{ host: "bad host" }, { host: "x.example.com", port: 0 }, { host: "x.example.com", port: "443" }, { host: "x.example.com", extra: 1 }, {}]) {
+    for (const body of [
+      { host: "bad host" },
+      { host: "x.example.com", port: 0 },
+      { host: "x.example.com", port: "443" },
+      { host: "x.example.com", extra: 1 },
+      {},
+    ]) {
       expect((await app.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify(body) })).status, JSON.stringify(body)).toBe(422);
     }
   });
@@ -217,9 +244,17 @@ describe("endpoints", () => {
       expect((await own.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: "localhost", port }) })).status).toBe(409);
 
       const probed = await json(await own.admin(`/api/v1/endpoints/${created.id}/probe`, { method: "POST" }));
-      expect(probed).toMatchObject({ lastError: null, chainValid: false, chainError: expect.any(String), certificate: { commonName: "localhost", state: "expiring" } });
+      expect(probed).toMatchObject({
+        lastError: null,
+        chainValid: false,
+        chainError: expect.any(String),
+        certificate: { commonName: "localhost", state: "expiring" },
+      });
       const list = (await json(await own.admin("/api/v1/certificates"))).certificates;
-      expect(list.map((c: any) => [c.commonName, c.sources[0].source, c.sources[0].position])).toEqual([["localhost", `localhost:${port}`, 0], ["Example Root CA", `localhost:${port}`, 1]]);
+      expect(list.map((c: any) => [c.commonName, c.sources[0].source, c.sources[0].position])).toEqual([
+        ["localhost", `localhost:${port}`, 0],
+        ["Example Root CA", `localhost:${port}`, 1],
+      ]);
       expect((await json(await own.admin("/api/v1/summary"))).endpoints).toBe(1);
     } finally {
       server.close();
@@ -233,7 +268,12 @@ describe("endpoints", () => {
     const created = await json(await own.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: "localhost", port: closed.port }) }));
     closed.server.close();
     const failed = await json(await own.admin(`/api/v1/endpoints/${created.id}/probe`, { method: "POST" }));
-    expect(failed).toMatchObject({ lastError: expect.stringContaining(String(closed.port)), chainValid: null, certificate: null, lastProbeAt: expect.any(String) });
+    expect(failed).toMatchObject({
+      lastError: expect.stringContaining(String(closed.port)),
+      chainValid: null,
+      certificate: null,
+      lastProbeAt: expect.any(String),
+    });
     expect((await json(await own.admin("/api/v1/summary"))).failingEndpoints).toBe(1);
     expect((await own.admin("/api/v1/endpoints/missing/probe", { method: "POST" })).status).toBe(404);
     expect((await own.admin(`/api/v1/endpoints/${created.id}`, { method: "DELETE" })).status).toBe(204);

@@ -46,7 +46,9 @@ async function call(method: string, path: string, init: RequestInit = {}, concre
   // A response is either inline or a $ref to components/responses; build the JSON pointer to its schema either way.
   const shared = declared!.$ref?.split("/").pop();
   const response = shared ? spec.components.responses[shared]! : declared!;
-  const at = shared ? `openapi#/components/responses/${shared}` : `openapi#/paths/${path.replaceAll("/", "~1")}/${method.toLowerCase()}/responses/${res.status}`;
+  const at = shared
+    ? `openapi#/components/responses/${shared}`
+    : `openapi#/paths/${path.replaceAll("/", "~1")}/${method.toLowerCase()}/responses/${res.status}`;
 
   if (!response.content) {
     expect(res.headers.get("content-length") ?? "0", `${method} ${path} ${res.status} should have no body`).toBe("0");
@@ -62,7 +64,10 @@ async function call(method: string, path: string, init: RequestInit = {}, concre
   return { res, body };
 }
 
-const auth = (token: string, body?: string, type = "application/json") => ({ headers: { authorization: `Bearer ${token}`, "content-type": type }, ...(body !== undefined && { body }) });
+const auth = (token: string, body?: string, type = "application/json") => ({
+  headers: { authorization: `Bearer ${token}`, "content-type": type },
+  ...(body !== undefined && { body }),
+});
 const admin = (body?: unknown) => auth(ADMIN_TOKEN, body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body));
 
 describe("openapi.json", () => {
@@ -90,7 +95,12 @@ describe("responses match openapi.json", () => {
   let id = "";
   let endpoint = "";
   const ca = makeCert({ cn: "Example Root CA", ca: true, keyKind: "rsa2048b", notAfter: inDays(3000) });
-  const leaf = makeCert({ cn: "shop.example.com", sans: ["shop.example.com"], notAfter: inDays(5), issuer: { cn: "Example Root CA", privateKey: ca.privateKey } });
+  const leaf = makeCert({
+    cn: "shop.example.com",
+    sans: ["shop.example.com"],
+    notAfter: inDays(5),
+    issuer: { cn: "Example Root CA", privateKey: ca.privateKey },
+  });
   const send = (body: string, token = INGEST_TOKEN) => auth(token, body, "text/plain");
 
   it("product and health", async () => {
@@ -103,7 +113,9 @@ describe("responses match openapi.json", () => {
   });
 
   it("certificates in, and every refusal", async () => {
-    const received = (await call("POST", "/api/v1/certificates", send(`${leaf.pem}\n${ca.pem}`), "/api/v1/certificates?source=web-1:443")).body as { certificates: Array<{ id: string }> };
+    const received = (await call("POST", "/api/v1/certificates", send(`${leaf.pem}\n${ca.pem}`), "/api/v1/certificates?source=web-1:443")).body as {
+      certificates: Array<{ id: string }>;
+    };
     id = received.certificates[0]!.id;
     await call("POST", "/api/v1/certificates", send(leaf.pem));
     await call("POST", "/api/v1/certificates", auth(INGEST_TOKEN, JSON.stringify({ pem: leaf.pem, source: "cron" })));
