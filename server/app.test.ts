@@ -2,6 +2,7 @@ import { createServer as tlsServer, type Server as TlsServer } from "node:tls";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fileId, parseEndpoints } from "./endpoints.ts";
 import { startApp } from "./test-app.ts";
 import { inDays, makeCert, privateKeyPem } from "./testcert.ts";
 
@@ -210,26 +211,27 @@ describe("endpoints", () => {
     return { server, port: (server.address() as AddressInfo).port };
   };
 
-  it("refuses private and loopback addresses by default", async () => {
-    for (const host of ["localhost", "127.0.0.1", "10.0.0.5", "169.254.169.254", "192.168.1.1", "::1"]) {
-      const res = await app.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host }) });
-      expect(res.status, host).toBe(422);
-      expect((await json(res)).detail, host).toMatch(/private address|does not resolve/);
+  // Endpoints come from the endpoints file only (ADR 0052): the tests give it one entry.
+  const fromFile = (own: Awaited<ReturnType<typeof startApp>>, url: string) =>
+    own.certs.syncFile(parseEndpoints(`endpoints:\n  - { name: Local, url: '${url}' }`));
+
+  it("has no route that adds an endpoint", async () => {
+    expect((await app.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: "shop.example.com" }) })).status).toBe(404);
+  });
+
+  it("refuses private and loopback addresses by default, at every probe", async () => {
+    for (const host of ["localhost", "127.0.0.1", "10.0.0.5", "169.254.169.254", "192.168.1.1"]) {
+      fromFile(app, `tls://${host}:443`);
+      const probed = await json(await app.admin(`/api/v1/endpoints/${fileId("Local")}/probe`, { method: "POST" }));
+      expect(probed.lastError, host).toMatch(/private address|does not resolve/);
     }
-    for (const body of [
-      { host: "bad host" },
-      { host: "x.example.com", port: 0 },
-      { host: "x.example.com", port: "443" },
-      { host: "x.example.com", extra: 1 },
-      {},
-    ]) {
-      expect((await app.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify(body) })).status, JSON.stringify(body)).toBe(422);
-    }
+    app.certs.syncFile([]);
   });
 
   it("refuses a public name that answers with a private address", async () => {
     const own = await startApp({ version: "0.1.0", probe: { resolve: async () => ["203.0.113.9", "10.0.0.1"] } });
-    expect((await own.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: "sneaky.example.com" }) })).status).toBe(422);
+    fromFile(own, "https://sneaky.example.com");
+    expect((await json(await own.admin(`/api/v1/endpoints/${fileId("Local")}/probe`, { method: "POST" }))).lastError).toMatch(/private address/);
     await own.close();
   });
 
@@ -239,9 +241,9 @@ describe("endpoints", () => {
     // Loopback is allowed here through the test hook only; the product has no setting for it.
     const own = await startApp({ version: "0.1.0", probe: { allowPrivate: true, resolve: async () => ["127.0.0.1"] } });
     try {
-      const created = await json(await own.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: "localhost", port }) }));
-      expect(created).toMatchObject({ host: "localhost", port, lastProbeAt: null, certificate: null });
-      expect((await own.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: "localhost", port }) })).status).toBe(409);
+      fromFile(own, `tls://localhost:${port}`);
+      const created = (await json(await own.admin("/api/v1/endpoints"))).endpoints[0];
+      expect(created).toMatchObject({ host: "localhost", port, source: "file", lastProbeAt: null, certificate: null });
 
       const probed = await json(await own.admin(`/api/v1/endpoints/${created.id}/probe`, { method: "POST" }));
       expect(probed).toMatchObject({
@@ -265,7 +267,8 @@ describe("endpoints", () => {
   it("keeps the failure of a probe, and the last good certificate", async () => {
     const own = await startApp({ version: "0.1.0", probe: { allowPrivate: true, resolve: async () => ["127.0.0.1"], timeoutMs: 500 } });
     const closed = await tls([shop.pem], shop.privateKey.export({ type: "pkcs8", format: "pem" }) as string);
-    const created = await json(await own.admin("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: "localhost", port: closed.port }) }));
+    fromFile(own, `tls://localhost:${closed.port}`);
+    const created = (await json(await own.admin("/api/v1/endpoints"))).endpoints[0];
     closed.server.close();
     const failed = await json(await own.admin(`/api/v1/endpoints/${created.id}/probe`, { method: "POST" }));
     expect(failed).toMatchObject({
@@ -276,8 +279,10 @@ describe("endpoints", () => {
     });
     expect((await json(await own.admin("/api/v1/summary"))).failingEndpoints).toBe(1);
     expect((await own.admin("/api/v1/endpoints/missing/probe", { method: "POST" })).status).toBe(404);
-    expect((await own.admin(`/api/v1/endpoints/${created.id}`, { method: "DELETE" })).status).toBe(204);
-    expect((await own.admin(`/api/v1/endpoints/${created.id}`, { method: "DELETE" })).status).toBe(404);
+    expect((await own.admin(`/api/v1/endpoints/${created.id}`, { method: "DELETE" })).status).toBe(409);
+    own.db.prepare("INSERT INTO endpoints (id, host, port, created_at) VALUES ('ui-1', 'shop.example.com', 443, '2026-10-01T00:00:00Z')").run();
+    expect((await own.admin("/api/v1/endpoints/ui-1", { method: "DELETE" })).status).toBe(204);
+    expect((await own.admin("/api/v1/endpoints/ui-1", { method: "DELETE" })).status).toBe(404);
     await own.close();
   });
 });
@@ -303,7 +308,7 @@ describe("deleting and access", () => {
     expect((await anon("/api/v1/certificates", { method: "POST", body: shop.pem, headers: { authorization: "Bearer nope" } })).status).toBe(401);
     expect((await anon("/api/v1/certificates")).status).toBe(401);
     expect((await app.ingest("/api/v1/certificates")).status).toBe(401);
-    expect((await app.ingest("/api/v1/endpoints", { method: "POST", body: "{}" })).status).toBe(401);
+    expect((await app.ingest("/api/v1/endpoints")).status).toBe(401);
     expect((await app.ingest("/api/v1/endpoints/x/probe", { method: "POST" })).status).toBe(401);
     const closed = await startApp({ version: "0.1.0", ingestToken: undefined, adminToken: undefined });
     expect((await fetch(`${closed.base}/api/v1/certificates`, { method: "POST", body: shop.pem })).status).toBe(503);

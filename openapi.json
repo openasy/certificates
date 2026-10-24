@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "OpenAsy Certificates API",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "summary": "Every TLS certificate you have, when it expires and what is wrong with it.",
     "description": "Every screen of certificates uses this API, and so can your scripts and cron jobs (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nSend certificates as PEM text with `CERTIFICATES_INGEST_TOKEN`. Private keys are never accepted. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
     "license": {
@@ -424,7 +424,7 @@
             "adminToken": []
           }
         ],
-        "description": "Needs the viewer role.",
+        "description": "Needs the viewer role. The endpoints come from the endpoints file (OPENASY_ENDPOINTS, ADR 0052); there is no route that adds one.",
         "responses": {
           "200": {
             "description": "By host.",
@@ -447,66 +447,6 @@
           }
         },
         "x-openasy-role": "viewer"
-      },
-      "post": {
-        "operationId": "createEndpoint",
-        "tags": [
-          "Endpoints"
-        ],
-        "summary": "Add an endpoint",
-        "security": [
-          {
-            "session": []
-          },
-          {
-            "apiToken": []
-          },
-          {
-            "adminToken": []
-          }
-        ],
-        "description": "An address the server connects to with a TLS handshake to read its certificates. Only public addresses: a name that resolves to a private, loopback or link-local address is refused, here and at every probe. Certificates on private networks are reported by a collector in that network.\n\nNeeds the admin role.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewEndpoint"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Added. It is probed on the next round, or with the probe operation.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Endpoint"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "401": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "403": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "409": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "422": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "503": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "x-openasy-role": "admin"
       }
     },
     "/api/v1/endpoints/{id}": {
@@ -527,7 +467,7 @@
             "adminToken": []
           }
         ],
-        "description": "Needs the admin role.",
+        "description": "Needs the admin role. Only an endpoint added in Certificates before the endpoints file was the way in can be deleted here; one from the file answers 409 and is removed in the file.",
         "parameters": [
           {
             "name": "id",
@@ -816,7 +756,7 @@
       "apiToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An API token created under Settings \u2192 API tokens (`oa_certificates_...`): one role, always an expiry (ADR 0003)."
+        "description": "An API token created under Settings → API tokens (`oa_certificates_...`): one role, always an expiry (ADR 0003)."
       },
       "adminToken": {
         "type": "http",
@@ -1449,25 +1389,6 @@
             "items": {
               "$ref": "#/components/schemas/Endpoint"
             }
-          }
-        }
-      },
-      "NewEndpoint": {
-        "type": "object",
-        "required": [
-          "host"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "host": {
-            "type": "string",
-            "description": "A name or an address on the public internet."
-          },
-          "port": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 65535,
-            "default": 443
           }
         }
       },

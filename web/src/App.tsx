@@ -19,7 +19,6 @@ import {
   SearchInput,
   SegmentedControl,
   StatusBadge,
-  TextField,
   usePath,
   type Column,
   type ProductId,
@@ -28,8 +27,8 @@ import {
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { BadgeCheck, KeyRound, LogIn, LogOut, Plus, Radar, RefreshCw, Settings2, Trash2, UserRound, Users } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { BadgeCheck, KeyRound, LogIn, LogOut, Radar, RefreshCw, Settings2, Trash2, UserRound, Users } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   api,
   MfaSetupRequired,
@@ -461,15 +460,22 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
   );
 }
 
+// What to write in the endpoints file (ADR 0052), shown where there is nothing yet.
+const EXAMPLE = `endpoints:
+  - name: Shop
+    url: https://shop.example.com
+  - name: Mail
+    url: tls://mail.example.com:465`;
+
+/** The entries of the endpoints file for endpoints added here before it was the way in. */
+const toYaml = (rows: Endpoint[]) =>
+  ["endpoints:", ...rows.map((e) => `  - name: ${e.host}\n    url: ${e.port === 443 ? `https://${e.host}` : `tls://${e.host}:${e.port}`}`)].join("\n");
+
 function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summary; reload: () => void }) {
   const ago = useAgo();
   const t = useT();
   const { can } = useAuth();
   const [rows, setRows] = useState<Endpoint[]>();
-  const [adding, setAdding] = useState(false);
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState("443");
-  const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
   const load = useCallback(
     () =>
@@ -480,21 +486,7 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
     [call],
   );
   useEffect(load, [load]);
-  const close = () => (setAdding(false), setHost(""), setPort("443"), setError(undefined));
-
-  const add = async (e: FormEvent) => {
-    e.preventDefault();
-    try {
-      const created = await call<Endpoint>("/api/v1/endpoints", { method: "POST", body: JSON.stringify({ host: host.trim(), port: Number(port) }) });
-      close();
-      load();
-      await call(`/api/v1/endpoints/${created.id}/probe`, { method: "POST" }).catch(() => {});
-      load();
-      reload();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
+  const added = (rows ?? []).filter((e) => e.source === "ui");
   const probe = async (id: string) => {
     setBusy(id);
     await call(`/api/v1/endpoints/${id}/probe`, { method: "POST" }).catch(() => {});
@@ -604,17 +596,7 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
   ];
   return (
     <>
-      <PageHeader
-        title={t("endpointsPage.endpoints")}
-        description={t("endpointsPage.addressesThisServerConnectsTo")}
-        actions={
-          can("admin") && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)}>
-              {t("endpointsPage.addEndpoint")}
-            </Button>
-          )
-        }
-      />
+      <PageHeader title={t("endpointsPage.endpoints")} description={t("endpointsPage.addressesThisServerConnectsTo")} />
       {summary?.endpointsFile?.error && (
         <Callout tone="danger" title={t("endpointsPage.theEndpointsFileIsNot")}>
           {t("endpointsPage.theEndpointsFromItsLast", { error: summary.endpointsFile.error, path: summary.endpointsFile.path })}
@@ -623,6 +605,12 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
       {!!summary?.endpointsFile?.warnings.length && (
         <Callout tone="warning" title={t("endpointsPage.theEndpointsFileHasSomething")}>
           {summary.endpointsFile.warnings.join(" ")}
+        </Callout>
+      )}
+      {!!added.length && (
+        <Callout tone="info" title={t("endpointsPage.addedHereBefore", { count: added.length })}>
+          {t("endpointsPage.copyTheseIntoTheEndpointsFile")}
+          <pre className="mt-2 mb-0 overflow-x-auto rounded-md bg-subtle p-3 font-mono text-xs">{toYaml(added)}</pre>
         </Callout>
       )}
       <Panel flush>
@@ -635,37 +623,12 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
           minWidth={900}
           empty={
             <EmptyState title={t("endpointsPage.noEndpoints")}>
-              {can("admin") ? t("endpointsPage.addAHostToRead") : t("endpointsPage.anAdminAddsTheHosts")}
+              {t("endpointsPage.theyComeFromTheEndpointsFile")}
+              <pre className="mt-3 mb-0 text-left font-mono text-xs">{EXAMPLE}</pre>
             </EmptyState>
           }
         />
       </Panel>
-      <Dialog
-        open={adding}
-        onOpenChange={(open) => !open && close()}
-        title={t("endpointsPage.addAnEndpoint")}
-        description={t("endpointsPage.theServerConnectsToIt")}
-        onSubmit={add}
-        footer={
-          <>
-            <Button type="button" onClick={close}>
-              {t("endpointsPage.cancel")}
-            </Button>
-            <Button type="submit" variant="primary" disabled={!host.trim()}>
-              {t("endpointsPage.addAndRead")}
-            </Button>
-          </>
-        }
-      >
-        <TextField
-          label={t("endpointsPage.host")}
-          value={host}
-          onChange={(e) => setHost(e.target.value)}
-          hint={t("endpointsPage.aNameSuchAsShop")}
-          error={error}
-        />
-        <TextField label={t("endpointsPage.port")} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
-      </Dialog>
     </>
   );
 }

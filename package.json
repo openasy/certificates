@@ -1,6 +1,6 @@
 {
   "name": "@openasy/certificates",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "OpenAsy Certificates: every TLS certificate you have, when it expires and what is wrong with it.",
   "license": "AGPL-3.0-only",

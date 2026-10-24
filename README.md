@@ -34,14 +34,15 @@ openssl s_client -connect shop.example.com:443 -showcerts </dev/null 2>/dev/null
 
 ## Endpoints
 
-An admin adds a public host and port; the server connects every 6 hours (`CERTIFICATES_PROBE_HOURS`), reads the chain
+The endpoints come from the endpoints file (see below); the server connects to each every 6 hours (`CERTIFICATES_PROBE_HOURS`), reads the chain
 it presents, and says apart whether the system's roots trust it and it fits the name. **Only public addresses**: a name
-that resolves to a private, loopback or link-local address is refused, when it is added and at every probe, so the
+that resolves to a private, loopback or link-local address is refused at every probe, so the
 server cannot be used to reach your internal network. Certificates on private networks are sent by a collector there.
 
 ### From a file
 
-Endpoints can also come from a file the install keeps, the same file Uptime reads (ADR 0052). Mount it and set
+Endpoints come from a file the install keeps, the same file Uptime reads, and from nowhere else (ADR 0052): there is
+no form and no API route that adds one. Mount it and set
 `OPENASY_ENDPOINTS`; Certificates reads it at start and again within a minute of a change, and probes new endpoints at
 once. Its `https://` and `tls://` entries are endpoints here; the others are Uptime's.
 
@@ -54,8 +55,9 @@ endpoints:
     url: tls://mail.example.com:465
 ```
 
-An endpoint from the file shows **From file** and is removed there: the API answers 409 to a delete. Endpoints added
-in the UI stay as they are; when one has the same address as an entry, it keeps it, and the file says so. A name on a
+An endpoint is changed and removed in the file: the API answers 409 to a delete. Endpoints added in the UI before 0.5.0
+keep working, and the Endpoints page shows the lines to copy into the file; once an entry has the same address, it takes
+the endpoint over with what was read. A name on a
 private address is kept with the probe's error rather than refusing the file. A file with a mistake is not applied at
 all: the endpoints from its last good version stay, and the Endpoints page and the log say what to fix.
 
@@ -113,7 +115,7 @@ The container runs as non-root with a read-only root filesystem, no capabilities
 
 ## Roles
 
-Viewers see everything; editors also send certificates and probe endpoints now; admins also add and remove endpoints,
+Viewers see everything; editors also send certificates and probe endpoints now; admins also remove endpoints added before the file,
 delete certificates, and manage members and API tokens (ADR 0003).
 
 ## Develop

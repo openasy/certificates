@@ -263,7 +263,6 @@ export function createApp({
 
     // Endpoints the server connects to itself, on public addresses only.
     { method: "GET", path: "/api/v1/endpoints", auth: "viewer", handle: () => ({ endpoints: certs.listEndpoints() }) },
-    { method: "POST", path: "/api/v1/endpoints", auth: "admin", handle: async ({ res, body }) => json(res, 201, await certs.createEndpoint(await body())) },
     { method: "DELETE", path: "/api/v1/endpoints/:id", auth: "admin", handle: ({ res, params }) => (certs.deleteEndpoint(params[0]!), noContent(res)) },
     { method: "POST", path: "/api/v1/endpoints/:id/probe", auth: "editor", handle: ({ params }) => certs.probeEndpoint(params[0]!) },
   ];

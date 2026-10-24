@@ -149,12 +149,8 @@ describe("responses match openapi.json", () => {
 
   it("endpoints", async () => {
     await call("GET", "/api/v1/endpoints", admin());
-    await call("POST", "/api/v1/endpoints", admin({ host: "localhost" }));
-    await call("POST", "/api/v1/endpoints", admin({ host: "bad host" }));
-    await call("POST", "/api/v1/endpoints", admin("nope"));
-    await call("POST", "/api/v1/endpoints", {});
-    endpoint = ((await call("POST", "/api/v1/endpoints", admin({ host: "api.example.com", port: 8443 }))).body as { id: string }).id;
-    await call("POST", "/api/v1/endpoints", admin({ host: "api.example.com", port: 8443 }));
+    app.db.prepare("INSERT INTO endpoints (id, host, port, created_at) VALUES ('ui-1', 'api.example.com', 8443, '2026-10-01T00:00:00Z')").run();
+    endpoint = "ui-1";
     await call("POST", "/api/v1/endpoints/{id}/probe", admin(), `/api/v1/endpoints/${endpoint}/probe`);
     await call("POST", "/api/v1/endpoints/{id}/probe", admin(), "/api/v1/endpoints/missing/probe");
     await call("POST", "/api/v1/endpoints/{id}/probe", { method: "POST" }, `/api/v1/endpoints/${endpoint}/probe`);

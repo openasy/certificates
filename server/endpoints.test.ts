@@ -54,17 +54,19 @@ describe("endpoints from the file", () => {
     expect((await json(probed)).lastError).toMatch(/private address.*collector/);
   });
 
-  it("follow the file, forget what was read at an old address, and leave one address to whoever added it first", async () => {
+  it("follow the file, forget what was read at an old address, and take over one added here at the same address", async () => {
     app.db.prepare("UPDATE endpoints SET last_probe_at = '2026-10-01T00:00:00Z', last_error = 'x' WHERE id = ?").run(fileId("Mail"));
     const warnings = app.certs.syncFile(
       parseEndpoints(
         "endpoints:\n  - { name: Mail, url: 'tls://mail.example.com:993', server: mail-1 }\n  - { name: Mail again, url: 'tls://mail.example.com:993' }\n  - { name: Shop, url: https://shop.example.com }\n  - { name: Resolver, url: 'dns://example.com' }\n",
       ),
     );
-    expect(warnings).toEqual(["Shop: shop.example.com:443 was added in Certificates; remove it there to let the file manage it."]);
+    expect(warnings).toEqual([]);
     const list = await endpoints();
-    expect(list.map((e) => `${e.host}:${e.port} ${e.source} ${e.server ?? "-"}`)).toEqual(["mail.example.com:993 file mail-1", "shop.example.com:443 ui -"]);
+    expect(list.map((e) => `${e.host}:${e.port} ${e.source} ${e.server ?? "-"}`)).toEqual(["mail.example.com:993 file mail-1", "shop.example.com:443 file -"]);
     expect(list[0]).toMatchObject({ lastProbeAt: null, lastError: null });
+    // The one added here is the file's now, under the file's name, and keeps when it was added.
+    expect(list[1]).toMatchObject({ id: fileId("Shop"), name: "Shop", createdAt: "2026-10-01T00:00:00Z" });
   });
 
   it("refuse a whole file with a bad address", async () => {

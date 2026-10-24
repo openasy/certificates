@@ -5,7 +5,7 @@
 #   docker compose logs certificates | grep 'no owner yet'   # the one-time link that creates the owner account
 services:
   certificates:
-    image: ghcr.io/openasy/certificates:0.4.0
+    image: ghcr.io/openasy/certificates:0.5.0
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -15,7 +15,7 @@ services:
       - "127.0.0.1:8080:8080" # UI and API; put a TLS proxy in front to reach it from elsewhere
     volumes:
       - certificates-data:/data # SQLite database: certificates, where they were seen, and endpoints
-      # - ./inventory:/config/inventory:ro   # the install's endpoints, shared with Uptime
+      # - ./inventory:/config/inventory:ro   # the install's endpoints, shared with Uptime and DAST
     secrets:
       - openasy-kek # mounted at /run/secrets/openasy-kek
     environment:

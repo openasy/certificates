@@ -1,8 +1,7 @@
 import { X509Certificate } from "node:crypto";
-import { randomUUID } from "node:crypto";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { fileId, type Endpoint } from "./endpoints.ts";
-import { fetchChain, resolvePublic, validHost, type ProbeOptions } from "./probe.ts";
+import { fetchChain, validHost, type ProbeOptions } from "./probe.ts";
 import { parsePem, PemError, type Parsed } from "./x509.ts";
 
 export type ProblemCode =
@@ -393,32 +392,18 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
     checkExpiry,
 
     // Endpoints.
-    async createEndpoint(body: Record<string, unknown>) {
-      const { host, port = 443, ...rest } = body;
-      if (Object.keys(rest).length || typeof host !== "string" || !validHost(host.trim())) throw bad("Expected { host, port? }; host is a name or an address.");
-      if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw bad("port must be a number from 1 to 65535.");
-      const name = host.trim().toLowerCase();
-      try {
-        await resolvePublic(name, probe);
-      } catch (err) {
-        throw bad((err as Error).message);
-      }
-      if (db.prepare("SELECT 1 FROM endpoints WHERE host = ? AND port = ?").get(name, port)) throw new CertsError(409, "conflict", "This endpoint exists.");
-      const id = randomUUID();
-      db.prepare("INSERT INTO endpoints (id, host, port, created_at) VALUES (?, ?, ?, ?)").run(id, name, port, now());
-      return presentEndpoint(endpointRow(id));
-    },
     listEndpoints: () => (db.prepare("SELECT * FROM endpoints ORDER BY host, port").all() as Array<Record<string, any>>).map(presentEndpoint),
     endpoint: (id: string) => presentEndpoint(endpointRow(id)),
     deleteEndpoint(id: string) {
       if (endpointRow(id).source === "file")
         throw new CertsError(409, "conflict", "This endpoint comes from the endpoints file (OPENASY_ENDPOINTS). Remove it there.");
+      // Only endpoints added here before the file was the way in (ADR 0052) can be removed here.
       db.prepare("DELETE FROM endpoints WHERE id = ?").run(id);
     },
 
     /**
-     * Makes the endpoints from the endpoints file match it (ADR 0052): the https:// and tls:// entries, by host and
-     * port. Endpoints added here are left alone. The addresses are checked again at every probe, so a name on a private
+     * Makes the endpoints match the endpoints file (ADR 0052): the https:// and tls:// entries, by host and port. An
+     * endpoint added here before, at an address the file names, becomes the file's and keeps what was read. The addresses are checked again at every probe, so a name on a private
      * address is kept with the error the probe gives it rather than refusing the file. Returns what to fix that did not
      * stop it.
      */
@@ -436,8 +421,8 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
             { id: string; source: string } | undefined;
           if (same && same.id !== id) {
             // Two entries for one address, such as https:// and tls://, are one endpoint.
-            if (same.source === "ui") warnings.push(`${e.name}: ${host}:${e.port} was added in Certificates; remove it there to let the file manage it.`);
-            continue;
+            if (same.source !== "ui" || db.prepare("SELECT 1 FROM endpoints WHERE id = ?").get(id)) continue;
+            db.prepare("UPDATE endpoints SET id = ?, source = 'file', name = ?, server = ? WHERE id = ?").run(id, e.name, e.server, same.id);
           }
           kept.push(id);
           const current = db.prepare("SELECT host, port FROM endpoints WHERE id = ?").get(id) as { host: string; port: number } | undefined;
