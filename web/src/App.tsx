@@ -22,16 +22,35 @@ import {
   StatusBadge,
   TONE_COLORS,
   usePath,
-  type Column,
-  type ProductId,
   useThemePreference,
   useAgo,
   toLocale,
   useLocalePreference,
+  BarList,
+  DonutChart,
+  OverviewGrid,
+  type Column,
+  type ProductId,
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAccountMenu, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { BadgeCheck, KeyRound, LogIn, LogOut, Radar, RefreshCw, Trash2, UserRound, Users } from "lucide-react";
+import {
+  BadgeCheck,
+  CircleX,
+  Clock,
+  Hourglass,
+  KeyRound,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Radar,
+  RefreshCw,
+  ShieldAlert,
+  Trash2,
+  TriangleAlert,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   api,
@@ -44,19 +63,21 @@ import {
   type State,
   type Summary,
   type Warning,
+  type Overview,
 } from "./api.ts";
 import { useT, type T } from "./i18n.ts";
 import { search } from "./search.ts";
 
 const PAGES = ["endpoints", "setup", "account", "members", "signin", "tokens", "about"] as const;
-type Route = { page: "certificates" | (typeof PAGES)[number] } | { page: "certificate"; id: string };
+type Route = { page: "overview" | "certificates" | (typeof PAGES)[number] } | { page: "certificate"; id: string };
 /** The first path segments that are pages of this UI, for followLinks. */
-export const PATHS = ["certificates", ...PAGES];
+export const PATHS = ["overview", "certificates", ...PAGES];
 function parseRoute(path: string): Route {
   const [page, id] = path.replace(/^\//, "").split("/");
   if (page === "certificates" && id) return { page: "certificate", id: decodeURIComponent(id) };
   if ((PAGES as readonly string[]).includes(page ?? "")) return { page: page as (typeof PAGES)[number] };
-  return { page: "certificates" };
+  if (page === "certificates") return { page: "certificates" };
+  return { page: "overview" };
 }
 
 /** Data loading with the session; when it ends, the sign-in screen comes back. */
@@ -113,6 +134,159 @@ function Left({ days, state }: { days: number; state: State }) {
 
 function Code({ children }: { children: ReactNode }) {
   return <pre className="m-0 max-h-72 overflow-auto rounded-md bg-subtle px-2.5 py-2 font-mono text-xs text-fg">{children}</pre>;
+}
+
+function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
+  const t = useT();
+  const [o, setO] = useState<Overview>();
+  useEffect(() => void call<Overview>("/api/v1/overview").then(setO, () => {}), [call, summary]);
+  const s = summary;
+  const STATE_COLOR: Record<State, string> = {
+    expired: TONE_COLORS.danger,
+    critical: TONE_COLORS.critical,
+    expiring: TONE_COLORS.warning,
+    "not-yet-valid": TONE_COLORS.neutral,
+    valid: TONE_COLORS.success,
+  };
+  const soonColumns: Column<Overview["soonest"][number]>[] = [
+    {
+      id: "name",
+      header: t("overviewPage.certificate"),
+      cell: (c) => (
+        <a href={`/certificates/${c.id}`} className="font-mono text-xs font-medium">
+          {c.commonName ?? c.id.slice(0, 12)}
+        </a>
+      ),
+    },
+    { id: "issuer", header: t("overviewPage.issuer"), cell: (c) => <span className="text-xs">{c.issuer}</span> },
+    {
+      id: "left",
+      header: t("overviewPage.daysLeft"),
+      width: "120px",
+      align: "right",
+      cell: (c) => (
+        <StatusBadge tone={c.daysLeft < 7 ? "danger" : c.daysLeft < Math.max(...(s?.warnDays ?? [30])) ? "warning" : "success"}>
+          {t("overviewPage.days", { n: c.daysLeft })}
+        </StatusBadge>
+      ),
+    },
+    { id: "ends", header: t("overviewPage.ends"), width: "120px", cell: (c) => <span className="text-xs">{new Date(c.notAfter).toLocaleDateString()}</span> },
+  ];
+  return (
+    <>
+      <PageHeader
+        title={t("overviewPage.overview")}
+        description={
+          s
+            ? t("certificatesPage.expiryWarningsAtDays", { plural: t("plurals.certificate", { count: s.certificates }), value: s.warnDays.join(", ") })
+            : undefined
+        }
+      />
+      {s && (
+        <KpiGrid minWidth={150}>
+          <KpiCard
+            label={t("certificatesPage.expired")}
+            value={s.states.expired}
+            icon={CircleX}
+            tone={s.states.expired ? "danger" : "success"}
+            href="/certificates"
+          />
+          <KpiCard
+            label={t("certificatesPage.critical")}
+            value={s.states.critical}
+            icon={ShieldAlert}
+            tone={s.states.critical ? "danger" : "success"}
+            footer={<span className="text-xs text-fg-muted">{t("certificatesPage.under7Days")}</span>}
+          />
+          <KpiCard
+            label={t("certificatesPage.expiring")}
+            value={s.states.expiring}
+            icon={Clock}
+            tone={s.states.expiring ? "warning" : "success"}
+            trend={s.expiryWeeks.map((w) => w.certificates)}
+            trendColor={TONE_COLORS.warning}
+          />
+          <KpiCard label={t("certificatesPage.withWarnings")} value={s.withWarnings} icon={TriangleAlert} tone={s.withWarnings ? "warning" : "success"} />
+          <KpiCard
+            label={t("certificatesPage.nextToExpire")}
+            value={s.nextExpiry ? `${s.nextExpiry.daysLeft} d` : "–"}
+            icon={Hourglass}
+            footer={<span className="certificates-clamp text-xs text-fg-muted">{s.nextExpiry?.commonName ?? ""}</span>}
+          />
+          <KpiCard
+            label={t("overviewPage.failingEndpoints")}
+            value={s.failingEndpoints}
+            icon={Radar}
+            tone={s.failingEndpoints ? "warning" : "success"}
+            href="/endpoints"
+          />
+        </KpiGrid>
+      )}
+      {s && (
+        <OverviewGrid>
+          <Panel title={t("certificatesPage.expiringSoon")} description={t("certificatesPage.eachWeekOfTheNext")}>
+            <StackedBarChart
+              label={t("certificatesPage.certificatesThatExpireEachWeek")}
+              categories={s.expiryWeeks.map((w) => new Date(w.start).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}
+              segments={[{ id: "certificates", name: t("certificatesPage.certificates"), color: TONE_COLORS.warning }]}
+              values={s.expiryWeeks.map((w) => [w.certificates])}
+              height={190}
+              xTicks={7}
+            />
+          </Panel>
+          <Panel title={t("overviewPage.byState")} description={t("overviewPage.byStateDetail")}>
+            <DonutChart
+              label={t("overviewPage.byState")}
+              caption={t("overviewPage.certificates")}
+              slices={STATES(t).map((x) => ({ id: x.value, name: x.label, value: s.states[x.value], color: STATE_COLOR[x.value], href: "/certificates" }))}
+            />
+          </Panel>
+        </OverviewGrid>
+      )}
+      {o && (
+        <OverviewGrid layout="thirds">
+          <Panel title={t("overviewPage.issuers")} description={t("overviewPage.issuersDetail")}>
+            {o.byIssuer.length ? (
+              <BarList
+                label={t("overviewPage.issuers")}
+                items={o.byIssuer.map((x) => ({ id: x.issuer, label: <span title={x.issuer}>{x.issuer}</span>, value: x.certificates }))}
+              />
+            ) : (
+              <EmptyState title={t("overviewPage.none")} />
+            )}
+          </Panel>
+          <Panel title={t("overviewPage.keys")} description={t("overviewPage.keysDetail")}>
+            {o.byKey.length ? (
+              <DonutChart
+                label={t("overviewPage.keys")}
+                caption={t("overviewPage.certificates")}
+                size={128}
+                slices={o.byKey.slice(0, 4).map((k) => ({ id: k.key, name: k.key, value: k.certificates }))}
+              />
+            ) : (
+              <EmptyState title={t("overviewPage.none")} />
+            )}
+          </Panel>
+          <Panel title={t("overviewPage.warningsTitle")} description={t("overviewPage.warningsDetail")}>
+            <BarList
+              label={t("overviewPage.warningsTitle")}
+              items={WARNINGS(t).map((w) => ({
+                id: w.value,
+                label: <span title={w.hint}>{w.label}</span>,
+                value: o.warnings[w.value],
+                color: TONE_COLORS.warning,
+              }))}
+            />
+          </Panel>
+        </OverviewGrid>
+      )}
+      {o && o.soonest.length > 0 && (
+        <Panel title={t("overviewPage.nextToEnd")} description={t("overviewPage.nextToEndDetail")} flush>
+          <DataTable label={t("overviewPage.nextToEnd")} rows={o.soonest} columns={soonColumns} getRowId={(c) => c.id} />
+        </Panel>
+      )}
+    </>
+  );
 }
 
 function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) {
@@ -212,37 +386,6 @@ function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) 
         }
         actions={<SearchInput label={t("certificatesPage.searchNameIssuerOrPlace")} className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />}
       />
-      {s && (
-        <KpiGrid minWidth={150}>
-          <KpiCard label={t("certificatesPage.expired")} value={s.states.expired} tone={s.states.expired ? "danger" : "success"} />
-          <KpiCard
-            label={t("certificatesPage.critical")}
-            value={s.states.critical}
-            tone={s.states.critical ? "danger" : "success"}
-            footer={<span className="text-xs text-fg-muted">{t("certificatesPage.under7Days")}</span>}
-          />
-          <KpiCard label={t("certificatesPage.expiring")} value={s.states.expiring} tone={s.states.expiring ? "warning" : "success"} />
-          <KpiCard label={t("certificatesPage.valid")} value={s.states.valid} tone="success" />
-          <KpiCard label={t("certificatesPage.withWarnings")} value={s.withWarnings} tone={s.withWarnings ? "warning" : "success"} />
-          <KpiCard
-            label={t("certificatesPage.nextToExpire")}
-            value={s.nextExpiry ? `${s.nextExpiry.daysLeft} d` : "–"}
-            footer={<span className="certificates-clamp text-xs text-fg-muted">{s.nextExpiry?.commonName ?? ""}</span>}
-          />
-        </KpiGrid>
-      )}
-      {s && (
-        <Panel title={t("certificatesPage.expiringSoon")} description={t("certificatesPage.eachWeekOfTheNext")}>
-          <StackedBarChart
-            label={t("certificatesPage.certificatesThatExpireEachWeek")}
-            categories={s.expiryWeeks.map((w) => new Date(w.start).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}
-            segments={[{ id: "certificates", name: t("certificatesPage.certificates"), color: TONE_COLORS.warning }]}
-            values={s.expiryWeeks.map((w) => [w.certificates])}
-            height={140}
-            xTicks={7}
-          />
-        </Panel>
-      )}
       <FilterBar onClear={() => (setState([]), setWarning([]), setQ(""), setOnlyLeaves("all"))}>
         <FacetFilter
           label={t("certificatesPage.state")}
@@ -762,6 +905,7 @@ function Product() {
   }, [reload]);
 
   const nav = [
+    { id: "overview", label: msg("product.overview"), icon: LayoutDashboard },
     { id: "certificates", label: msg("product.certificates"), icon: BadgeCheck, count: summary?.certificates },
     { id: "endpoints", label: msg("product.endpoints"), icon: Radar, count: summary?.failingEndpoints || undefined },
   ];
@@ -798,8 +942,10 @@ function Product() {
       onThemeChange={setTheme}
       onLanguageChange={(code) => setLocale(toLocale(code))}
     >
-      {route.page === "certificates" && summary && summary.certificates === 0 && summary.endpoints === 0 ? (
+      {(route.page === "overview" || route.page === "certificates") && summary && summary.certificates === 0 && summary.endpoints === 0 ? (
         <WelcomePage />
+      ) : route.page === "overview" ? (
+        <OverviewPage call={call} summary={summary} />
       ) : route.page === "certificates" ? (
         <CertificatesPage call={call} summary={summary} />
       ) : route.page === "certificate" ? (

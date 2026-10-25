@@ -144,6 +144,7 @@ describe("responses match openapi.json", () => {
     await call("GET", "/api/v1/expiring", admin(), "/api/v1/expiring?since=yesterday");
     await call("GET", "/api/v1/expiring", {});
     await call("GET", "/api/v1/summary", admin());
+    await call("GET", "/api/v1/overview", admin());
     await call("GET", "/api/v1/summary", {});
   });
 

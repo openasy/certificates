@@ -322,3 +322,23 @@ describe("deleting and access", () => {
     expect(await json(await fetch(`${app.base}/api/v1/version`))).toEqual({ product: "certificates", version: "0.1.0" });
   });
 });
+
+describe("the overview", () => {
+  let own: Awaited<ReturnType<typeof startApp>>;
+  beforeAll(async () => {
+    own = await startApp({ version: "0.1.0" });
+  });
+  afterAll(() => own.close());
+
+  it("counts certificates by issuer, key and warning, and lists the next to end", async () => {
+    const soon = makeCert({ cn: "soon.example.com", notAfter: inDays(5), ...signed });
+    const wild = makeCert({ cn: "*.example.com", sans: ["*.example.com"], notAfter: inDays(40), ...signed });
+    await own.send(`${shop.pem}\n${soon.pem}\n${wild.pem}`, "web-1:443");
+    const o = await json(await own.admin("/api/v1/overview"));
+    expect(o.byIssuer).toEqual([{ issuer: "Example Root CA", certificates: 3 }]);
+    expect(o.byKey.reduce((n: number, k: { certificates: number }) => n + k.certificates, 0)).toBe(3);
+    expect(o.warnings.wildcard).toBe(1);
+    expect(o.soonest.map((c: { commonName: string }) => c.commonName)).toEqual(["soon.example.com", "*.example.com", "shop.example.com"]);
+    expect(o.soonest[0].daysLeft).toBeLessThanOrEqual(5);
+  });
+});

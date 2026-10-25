@@ -218,6 +218,7 @@ export function createApp({
     { method: "GET", path: "/api/v1/version", auth: "none", handle: () => ({ product: "certificates", version }) },
     { method: "GET", path: "/api/v1/products", auth: "viewer", handle: () => ({ products }) },
     { method: "GET", path: "/api/v1/summary", auth: "viewer", handle: () => ({ ...certs.summary(), endpointsFile: endpointsFile?.() ?? null }) },
+    { method: "GET", path: "/api/v1/overview", auth: "viewer", handle: () => certs.overview() },
 
     // Certificates in, as PEM text, from CI, a cron job or a collector. A private key in the body refuses all of it.
     {

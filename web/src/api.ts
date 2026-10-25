@@ -103,3 +103,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
+
+/** What the overview draws besides the summary (GET /api/v1/overview). Counts are of certificates still valid. */
+export interface Overview {
+  byIssuer: Array<{ issuer: string; certificates: number }>;
+  byKey: Array<{ key: string; certificates: number }>;
+  warnings: Record<Warning, number>;
+  /** The next eight to end. */
+  soonest: Array<{ id: string; commonName: string | null; issuer: string; notAfter: string; daysLeft: number }>;
+}

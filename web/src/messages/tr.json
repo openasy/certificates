@@ -1,4 +1,26 @@
 {
+  "overviewPage": {
+    "overview": "Genel bakış",
+    "failingEndpoints": "Hatalı uç noktalar",
+    "byState": "Duruma göre",
+    "byStateDetail": "Tutulan her sertifika, bugünkü durumuna göre.",
+    "certificates": "sertifika",
+    "issuers": "Yayıncılar",
+    "issuersDetail": "Hâlâ geçerli sertifikaları kimin imzaladığı.",
+    "keys": "Anahtarlar",
+    "keysDetail": "Hâlâ geçerli sertifikaların anahtar türü ve boyutu.",
+    "warningsTitle": "Uyarılar",
+    "warningsDetail": "Her uyarıyı taşıyan geçerli sertifikalar; nedeni için üzerine gelin.",
+    "none": "Yok",
+    "nextToEnd": "Sırada bitecekler",
+    "nextToEndDetail": "En yakında bitecek sekiz sertifika.",
+    "certificate": "Sertifika",
+    "issuer": "Yayıncı",
+    "daysLeft": "Kalan",
+    "days_one": "{{n}} gün",
+    "days_other": "{{n}} gün",
+    "ends": "Bitiş"
+  },
   "left": {
     "notYet": "henüz değil",
     "dAgo": "{{value}} gün önce"
@@ -127,6 +149,7 @@
     "signOut": "Çıkış yap"
   },
   "product": {
+    "overview": "Genel bakış",
     "certificates": "Sertifikalar",
     "endpoints": "Uç noktalar",
     "setup": "Kurulum",

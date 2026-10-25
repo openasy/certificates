@@ -496,6 +496,40 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
       };
     },
 
+    /**
+     * What the overview draws besides the summary: certificates by issuer and by key, how many carry each warning,
+     * and the next eight to end.
+     */
+    overview() {
+      const at = new Date().toISOString();
+      const byIssuer = (
+        db
+          .prepare("SELECT COALESCE(issuer_cn, issuer) AS issuer, COUNT(*) AS n FROM certificates WHERE not_after >= ? GROUP BY 1 ORDER BY n DESC, 1 LIMIT 8")
+          .all(at) as Array<{
+          issuer: string;
+          n: number;
+        }>
+      ).map((r) => ({ issuer: r.issuer, certificates: r.n }));
+      const byKey = (
+        db
+          .prepare(
+            "SELECT key_type || COALESCE(' ' || key_bits, '') AS key, COUNT(*) AS n FROM certificates WHERE not_after >= ? GROUP BY 1 ORDER BY n DESC, 1 LIMIT 6",
+          )
+          .all(at) as Array<{ key: string; n: number }>
+      ).map((r) => ({ key: r.key, certificates: r.n }));
+      const warnings = Object.fromEntries(WARNINGS.map((w) => [w, 0])) as Record<(typeof WARNINGS)[number], number>;
+      for (const r of db.prepare("SELECT warnings FROM certificates WHERE warnings <> '[]' AND not_after >= ?").all(at) as Array<{ warnings: string }>)
+        for (const w of JSON.parse(r.warnings) as Array<(typeof WARNINGS)[number]>) if (w in warnings) warnings[w]++;
+      const soonest = (db.prepare("SELECT * FROM certificates WHERE not_after >= ? ORDER BY not_after LIMIT 8").all(at) as unknown as CertRow[]).map((r) => ({
+        id: r.id,
+        commonName: r.subject_cn,
+        issuer: r.issuer_cn ?? r.issuer,
+        notAfter: r.not_after,
+        daysLeft: daysLeft(r),
+      }));
+      return { byIssuer, byKey, warnings, soonest };
+    },
+
     countStates,
 
     purge() {

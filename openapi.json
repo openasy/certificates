@@ -602,6 +602,49 @@
         "x-openasy-role": "viewer"
       }
     },
+    "/api/v1/overview": {
+      "get": {
+        "operationId": "getOverview",
+        "tags": [
+          "Product"
+        ],
+        "summary": "What the overview draws",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Certificates still valid by issuer and by key, how many carry each warning, and the next eight to end.\n\nNeeds the viewer role.",
+        "responses": {
+          "200": {
+            "description": "What the overview draws.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
     "/api/v1/version": {
       "get": {
         "operationId": "getVersion",
@@ -1575,6 +1618,123 @@
               "type": "string"
             },
             "description": "What to fix that did not stop the file from being applied."
+          }
+        }
+      },
+      "Overview": {
+        "type": "object",
+        "required": [
+          "byIssuer",
+          "byKey",
+          "warnings",
+          "soonest"
+        ],
+        "properties": {
+          "byIssuer": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "issuer",
+                "certificates"
+              ],
+              "properties": {
+                "issuer": {
+                  "type": "string"
+                },
+                "certificates": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "description": "Eight at most."
+          },
+          "byKey": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "key",
+                "certificates"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "certificates": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "description": "Key type and size; six at most."
+          },
+          "warnings": {
+            "type": "object",
+            "required": [
+              "weak-key",
+              "weak-signature",
+              "wildcard",
+              "self-signed",
+              "long-lifetime"
+            ],
+            "properties": {
+              "weak-key": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "weak-signature": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "wildcard": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "self-signed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "long-lifetime": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "soonest": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "commonName",
+                "issuer",
+                "notAfter",
+                "daysLeft"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "commonName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "issuer": {
+                  "type": "string"
+                },
+                "notAfter": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "daysLeft": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       }

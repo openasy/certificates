@@ -1,4 +1,26 @@
 {
+  "overviewPage": {
+    "overview": "Übersicht",
+    "failingEndpoints": "Fehlerhafte Endpunkte",
+    "byState": "Nach Zustand",
+    "byStateDetail": "Jedes gespeicherte Zertifikat nach seinem heutigen Stand.",
+    "certificates": "Zertifikate",
+    "issuers": "Aussteller",
+    "issuersDetail": "Wer die noch gültigen Zertifikate signiert hat.",
+    "keys": "Schlüssel",
+    "keysDetail": "Schlüsseltyp und -größe der noch gültigen Zertifikate.",
+    "warningsTitle": "Warnungen",
+    "warningsDetail": "Noch gültige Zertifikate mit jeder Warnung; für den Grund darüberfahren.",
+    "none": "Keine",
+    "nextToEnd": "Als Nächstes ablaufend",
+    "nextToEndDetail": "Die acht Zertifikate, die am frühesten ablaufen.",
+    "certificate": "Zertifikat",
+    "issuer": "Aussteller",
+    "daysLeft": "Übrig",
+    "days_one": "{{n}} Tag",
+    "days_other": "{{n}} Tage",
+    "ends": "Läuft ab"
+  },
   "left": {
     "notYet": "noch nicht",
     "dAgo": "vor {{value}} T."
@@ -127,6 +149,7 @@
     "signOut": "Abmelden"
   },
   "product": {
+    "overview": "Übersicht",
     "certificates": "Zertifikate",
     "endpoints": "Endpunkte",
     "setup": "Einrichtung",

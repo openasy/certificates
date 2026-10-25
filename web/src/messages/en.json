@@ -1,4 +1,26 @@
 {
+  "overviewPage": {
+    "overview": "Overview",
+    "failingEndpoints": "Failing endpoints",
+    "byState": "By state",
+    "byStateDetail": "Every certificate kept, by where it stands today.",
+    "certificates": "certificates",
+    "issuers": "Issuers",
+    "issuersDetail": "Who signed the certificates still valid.",
+    "keys": "Keys",
+    "keysDetail": "Key type and size of the certificates still valid.",
+    "warningsTitle": "Warnings",
+    "warningsDetail": "Certificates still valid that carry each warning; hover for why.",
+    "none": "None",
+    "nextToEnd": "Next to end",
+    "nextToEndDetail": "The eight certificates that end soonest.",
+    "certificate": "Certificate",
+    "issuer": "Issuer",
+    "daysLeft": "Left",
+    "days_one": "{{n}} day",
+    "days_other": "{{n}} days",
+    "ends": "Ends"
+  },
   "left": {
     "notYet": "not yet",
     "dAgo": "{{value}} d ago"
@@ -127,6 +149,7 @@
     "signOut": "Sign out"
   },
   "product": {
+    "overview": "Overview",
     "certificates": "Certificates",
     "endpoints": "Endpoints",
     "setup": "Setup",
