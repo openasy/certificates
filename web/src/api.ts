@@ -70,6 +70,8 @@ export interface Summary {
   warnDays: number[];
   nextExpiry: { id: string; commonName: string | null; notAfter: string; daysLeft: number } | null;
   endpointsFile: EndpointsFile | null;
+  /** Certificates that expire in each of the next 13 weeks, counted from now, soonest first. */
+  expiryWeeks: Array<{ start: string; certificates: number }>;
 }
 
 /** The endpoints file (ADR 0052), shared with Uptime: a file that cannot be applied leaves its last good version. */

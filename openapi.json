@@ -756,7 +756,7 @@
       "apiToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An API token created under Settings → API tokens (`oa_certificates_...`): one role, always an expiry (ADR 0003)."
+        "description": "An API token created under Settings \u2192 API tokens (`oa_certificates_...`): one role, always an expiry (ADR 0003)."
       },
       "adminToken": {
         "type": "http",
@@ -1402,7 +1402,8 @@
           "failingEndpoints",
           "warnDays",
           "nextExpiry",
-          "endpointsFile"
+          "endpointsFile",
+          "expiryWeeks"
         ],
         "properties": {
           "certificates": {
@@ -1500,6 +1501,28 @@
               }
             ],
             "description": "null when OPENASY_ENDPOINTS is not set."
+          },
+          "expiryWeeks": {
+            "type": "array",
+            "description": "Certificates that expire in each of the next 13 weeks, counted from now, soonest first.",
+            "items": {
+              "type": "object",
+              "required": [
+                "start",
+                "certificates"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "The start of the week: now for the first one."
+                },
+                "certificates": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "additionalProperties": false

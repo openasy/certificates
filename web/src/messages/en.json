@@ -22,6 +22,9 @@
     "valid": "Valid",
     "withWarnings": "With warnings",
     "nextToExpire": "Next to expire",
+    "expiringSoon": "Expiring soon",
+    "eachWeekOfTheNext": "Each week of the next 13, counted from today.",
+    "certificatesThatExpireEachWeek": "Certificates that expire in each of the next 13 weeks",
     "warning": "Warning",
     "kind": "Kind",
     "all": "All",
@@ -68,7 +71,11 @@
     "kind": "Kind",
     "certificateAuthority": "Certificate authority",
     "leafSelfSigned": "Leaf, self-signed",
-    "leaf": "Leaf"
+    "leaf": "Leaf",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left"
   },
   "endpointsPage": {
     "endpoint": "Endpoint",
@@ -152,5 +159,10 @@
     "certificate_other": "{{count}} certificates",
     "name_one": "{{count}} name",
     "name_other": "{{count}} names"
+  },
+  "search": {
+    "certificate": "Certificate",
+    "endpoint": "Endpoint",
+    "certificateDetail": "{{issuer}} · {{days}} days left"
   }
 }

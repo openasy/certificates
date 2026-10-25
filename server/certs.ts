@@ -331,6 +331,18 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
     return presentEndpoint(endpointRow(id));
   }
 
+  /** Certificates that expire in each of the next 13 weeks, counted from now. */
+  const expiryWeeks = () => {
+    const from = Date.now();
+    const weeks = Array.from({ length: 13 }, (_, i) => ({ start: new Date(from + i * 7 * DAY).toISOString(), certificates: 0 }));
+    const until = new Date(from + 13 * 7 * DAY).toISOString();
+    for (const r of db.prepare("SELECT not_after FROM certificates WHERE not_after >= ? AND not_after < ?").all(weeks[0]!.start, until) as Array<{
+      not_after: string;
+    }>)
+      weeks[Math.floor((Date.parse(r.not_after) - from) / (7 * DAY))]!.certificates++;
+    return weeks;
+  };
+
   const countStates = () => {
     const out = Object.fromEntries(STATES.map((s) => [s, 0])) as Record<State, number>;
     const at = Date.now();
@@ -480,6 +492,7 @@ export function createCerts(db: DatabaseSync, { retentionDays = 365, warnDays = 
         failingEndpoints: failing,
         warnDays,
         nextExpiry: next ? { id: next.id, commonName: next.subject_cn, notAfter: next.not_after, daysLeft: daysLeft(next) } : null,
+        expiryWeeks: expiryWeeks(),
       };
     },
 

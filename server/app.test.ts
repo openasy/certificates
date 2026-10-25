@@ -157,6 +157,12 @@ describe("states and warnings", () => {
     expect(s).toMatchObject({ states: { expired: 1, critical: 1, expiring: 1, "not-yet-valid": 1 }, withWarnings: 5, warnDays: [30, 14, 7, 1], endpoints: 0 });
     expect(s.certificates).toBe(Object.values(s.states as Record<string, number>).reduce((a, b) => a + b, 0));
     expect(s.nextExpiry).toMatchObject({ commonName: "critical.example.com" });
+    // Each certificate that expires in the next 13 weeks is counted once, in the week it expires.
+    const all = (await json(await app.admin("/api/v1/certificates?limit=500"))).certificates as Array<{ notAfter: string }>;
+    const soon = all.filter((c) => Date.parse(c.notAfter) >= Date.now() && Date.parse(c.notAfter) < Date.now() + 91 * 86_400_000).length;
+    expect(s.expiryWeeks).toHaveLength(13);
+    expect(s.expiryWeeks.reduce((n: number, w: { certificates: number }) => n + w.certificates, 0)).toBe(soon);
+    expect(soon).toBeGreaterThan(0);
     const metrics = await (await fetch(`${app.base}/metrics`)).text();
     expect(metrics).toContain('openasy_build_info{product="certificates",version="0.1.0"} 1');
     expect(metrics).toContain('openasy_certificates_expiring{state="critical"} 1');

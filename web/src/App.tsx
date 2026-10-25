@@ -18,17 +18,21 @@ import {
   PRODUCT_IDS,
   SearchInput,
   SegmentedControl,
+  StackedBarChart,
   StatusBadge,
+  TONE_COLORS,
   usePath,
   type Column,
   type ProductId,
   useThemePreference,
   useAgo,
+  toLocale,
+  useLocalePreference,
 } from "@openasy/ui";
-import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth, useInstallBrand } from "@openasy/auth/react";
+import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAccountMenu, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { BadgeCheck, KeyRound, LogIn, LogOut, Radar, RefreshCw, Settings2, Trash2, UserRound, Users } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { BadgeCheck, KeyRound, LogIn, LogOut, Radar, RefreshCw, Trash2, UserRound, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   api,
   MfaSetupRequired,
@@ -42,6 +46,7 @@ import {
   type Warning,
 } from "./api.ts";
 import { useT, type T } from "./i18n.ts";
+import { search } from "./search.ts";
 
 const PAGES = ["endpoints", "setup", "account", "members", "signin", "tokens", "about"] as const;
 type Route = { page: "certificates" | (typeof PAGES)[number] } | { page: "certificate"; id: string };
@@ -226,6 +231,18 @@ function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) 
           />
         </KpiGrid>
       )}
+      {s && (
+        <Panel title={t("certificatesPage.expiringSoon")} description={t("certificatesPage.eachWeekOfTheNext")}>
+          <StackedBarChart
+            label={t("certificatesPage.certificatesThatExpireEachWeek")}
+            categories={s.expiryWeeks.map((w) => new Date(w.start).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}
+            segments={[{ id: "certificates", name: t("certificatesPage.certificates"), color: TONE_COLORS.warning }]}
+            values={s.expiryWeeks.map((w) => [w.certificates])}
+            height={140}
+            xTicks={7}
+          />
+        </Panel>
+      )}
       <FilterBar onClear={() => (setState([]), setWarning([]), setQ(""), setOnlyLeaves("all"))}>
         <FacetFilter
           label={t("certificatesPage.state")}
@@ -326,7 +343,7 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
         [t("certificatePage.validFrom"), new Date(cert.notBefore).toLocaleString()],
         [
           t("certificatePage.validUntil"),
-          `${new Date(cert.notAfter).toLocaleString()} (${cert.daysLeft < 0 ? `${-cert.daysLeft} days ago` : `${cert.daysLeft} days left`})`,
+          `${new Date(cert.notAfter).toLocaleString()} (${cert.daysLeft < 0 ? t("certificatePage.daysAgo", { count: -cert.daysLeft }) : t("certificatePage.daysLeft", { count: cert.daysLeft })})`,
         ],
         [t("certificatePage.key"), `${cert.keyType.toUpperCase()}${cert.keyBits ? ` ${cert.keyBits}` : ""}`],
         [t("certificatePage.signature"), cert.signature],
@@ -717,11 +734,14 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
 function Product() {
   const msg = useT();
   const [theme, setTheme] = useThemePreference();
+  const [, setLocale] = useLocalePreference();
   const { me, can } = useAuth();
+  const account = useAccountMenu();
   const route = parseRoute(usePath());
   const [summary, setSummary] = useState<Summary>();
   const [products, setProducts] = useState<Array<ProductLink & { id: ProductId }>>([]);
   const call = useApi();
+  const onSearch = useMemo(() => search(call, msg), [call, msg]);
 
   // The install's other products (OPENASY_PRODUCTS), for the switcher; ids this UI does not know are left out.
   useEffect(() => {
@@ -746,7 +766,6 @@ function Product() {
     { id: "endpoints", label: msg("product.endpoints"), icon: Radar, count: summary?.failingEndpoints || undefined },
   ];
   const footerNav = [
-    { id: "setup", label: msg("product.setup"), icon: Settings2 },
     ...(can("admin")
       ? [
           { id: "members", label: msg("product.members"), icon: Users },
@@ -762,6 +781,7 @@ function Product() {
   return (
     <AppShell
       product="certificates"
+      onSearch={onSearch}
       about={colophon}
       nav={nav}
       activeNav={active}
@@ -771,10 +791,12 @@ function Product() {
         const to = products.find((p) => p.id === id);
         if (to) window.location.assign(to.url);
       }}
-      footerNav={footerNav}
-      user={{ name: me.user.name, role: roleName }}
+      footerNav={account.settings(footerNav)}
+      setup
+      user={{ name: me.user.name, role: roleName, ...account.user }}
       theme={theme}
       onThemeChange={setTheme}
+      onLanguageChange={(code) => setLocale(toLocale(code))}
     >
       {route.page === "certificates" && summary && summary.certificates === 0 && summary.endpoints === 0 ? (
         <WelcomePage />
@@ -796,9 +818,10 @@ function Product() {
 export function App() {
   const installBrand = useInstallBrand();
   const [theme] = useThemePreference();
+  const [locale] = useLocalePreference();
   return (
     // The install's brand from config/brand.env (ADR 0053); OpenAsy's own look where it sets none.
-    <BrandProvider theme={theme} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
+    <BrandProvider theme={theme} locale={locale} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
       <AuthGate product="OpenAsy Certificates">
         <Product />
       </AuthGate>
