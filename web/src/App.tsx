@@ -65,7 +65,7 @@ import {
   type Warning,
   type Overview,
 } from "./api.ts";
-import { useT, type T } from "./i18n.ts";
+import { useT, type T, viewerLocale, setViewerLocale } from "./i18n.ts";
 import { search } from "./search.ts";
 
 const PAGES = ["endpoints", "setup", "account", "members", "signin", "tokens", "about"] as const;
@@ -170,7 +170,12 @@ function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
         </StatusBadge>
       ),
     },
-    { id: "ends", header: t("overviewPage.ends"), width: "120px", cell: (c) => <span className="text-xs">{new Date(c.notAfter).toLocaleDateString()}</span> },
+    {
+      id: "ends",
+      header: t("overviewPage.ends"),
+      width: "120px",
+      cell: (c) => <span className="text-xs">{new Date(c.notAfter).toLocaleDateString(viewerLocale())}</span>,
+    },
   ];
   return (
     <>
@@ -227,7 +232,7 @@ function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
           <Panel title={t("certificatesPage.expiringSoon")} description={t("certificatesPage.eachWeekOfTheNext")}>
             <StackedBarChart
               label={t("certificatesPage.certificatesThatExpireEachWeek")}
-              categories={s.expiryWeeks.map((w) => new Date(w.start).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}
+              categories={s.expiryWeeks.map((w) => new Date(w.start).toLocaleDateString(viewerLocale(), { month: "short", day: "numeric" }))}
               segments={[{ id: "certificates", name: t("certificatesPage.certificates"), color: TONE_COLORS.warning }]}
               values={s.expiryWeeks.map((w) => [w.certificates])}
               height={190}
@@ -345,7 +350,7 @@ function CertificatesPage({ call, summary }: { call: Call; summary?: Summary }) 
       id: "expires",
       header: t("certificatesPage.expires"),
       sortValue: (c) => c.notAfter,
-      cell: (c) => <span className="text-xs whitespace-nowrap">{new Date(c.notAfter).toLocaleDateString()}</span>,
+      cell: (c) => <span className="text-xs whitespace-nowrap">{new Date(c.notAfter).toLocaleDateString(viewerLocale())}</span>,
     },
     { id: "left", header: t("certificatesPage.left"), align: "right", sortValue: (c) => c.daysLeft, cell: (c) => <Left days={c.daysLeft} state={c.state} /> },
     { id: "issuer", header: t("certificatesPage.issuer"), cell: (c) => <span className="certificates-wrap text-xs">{c.issuerCommonName ?? c.issuer}</span> },
@@ -483,10 +488,10 @@ function CertificatePage({ call, id, reload }: { call: Call; id: string; reload:
             {cert.issuer}
           </span>,
         ],
-        [t("certificatePage.validFrom"), new Date(cert.notBefore).toLocaleString()],
+        [t("certificatePage.validFrom"), new Date(cert.notBefore).toLocaleString(viewerLocale())],
         [
           t("certificatePage.validUntil"),
-          `${new Date(cert.notAfter).toLocaleString()} (${cert.daysLeft < 0 ? t("certificatePage.daysAgo", { count: -cert.daysLeft }) : t("certificatePage.daysLeft", { count: cert.daysLeft })})`,
+          `${new Date(cert.notAfter).toLocaleString(viewerLocale())} (${cert.daysLeft < 0 ? t("certificatePage.daysAgo", { count: -cert.daysLeft }) : t("certificatePage.daysLeft", { count: cert.daysLeft })})`,
         ],
         [t("certificatePage.key"), `${cert.keyType.toUpperCase()}${cert.keyBits ? ` ${cert.keyBits}` : ""}`],
         [t("certificatePage.signature"), cert.signature],
@@ -784,7 +789,7 @@ function EndpointsPage({ call, summary, reload }: { call: Call; summary?: Summar
           empty={
             <EmptyState title={t("endpointsPage.noEndpoints")}>
               {t("endpointsPage.theyComeFromTheEndpointsFile")}
-              <pre className="mt-3 mb-0 text-left font-mono text-xs">{EXAMPLE}</pre>
+              <pre className="mt-3 mb-0 text-start font-mono text-xs">{EXAMPLE}</pre>
             </EmptyState>
           }
         />
@@ -965,6 +970,7 @@ export function App() {
   const installBrand = useInstallBrand();
   const [theme] = useThemePreference();
   const [locale] = useLocalePreference();
+  setViewerLocale(locale);
   return (
     // The install's brand from config/brand.env (ADR 0053); OpenAsy's own look where it sets none.
     <BrandProvider theme={theme} locale={locale} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
